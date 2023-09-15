@@ -40,7 +40,7 @@ def query_handler(call):
         bot.send_document(call.message.chat.id, open(r'Наш.html', 'rb'))
     if flag == "5":
         bot.edit_chat_invite_link(call.message.chat.id, )  # Здесь мы должны продумать как сделать приглашение
-
+    
 
 print("Telegram started successfully")
 bot.infinity_polling()
