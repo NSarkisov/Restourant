@@ -1,10 +1,17 @@
+import json
 import gspread
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import sqlite3 as sl
 
-bot = telebot.TeleBot('Token from json config')
-con = sl.connect('Path for Database file')
+with open("Config.json") as f:
+    config = json.load(f)
+    Token = config.get("telegram_token")
+    database = config.get("database_path")
+
+bot = telebot.TeleBot(Token)
+con = sl.connect(database)
+
 
 # markup_category = InlineKeyboardMarkup()
 # markup_category.add(InlineKeyboardButton('Меню', callback_data="1" + 'Меню'))
@@ -16,15 +23,13 @@ con = sl.connect('Path for Database file')
 
 @bot.message_handler(content_types=['text'])
 def start(message):
-    print(message.from_user.id)
+
 
     if message.text == '/start':
-
         #Запись данных о пользователе
 
         bot.send_message(message.chat.id,
-                         'Выберите интересующий для вас раздел',
-                         reply_markup=markup_category)
+                         'Выберите интересующий для вас раздел')
 
 
 @bot.callback_query_handler(func=lambda call: True)
