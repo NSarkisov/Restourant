@@ -6,12 +6,12 @@ import sqlite3 as sl
 bot = telebot.TeleBot('Token from json config')
 con = sl.connect('Path for Database file')
 
-markup_category = InlineKeyboardMarkup()
-markup_category.add(InlineKeyboardButton('Меню', callback_data="1" + 'Меню'))
-markup_category.add(InlineKeyboardButton('Профиль', callback_data="2" + 'Профиль'))
-markup_category.add(InlineKeyboardButton('Мои заказы', callback_data="3" + 'Мои заказы'))
-markup_category.add(InlineKeyboardButton('Наши контакты', callback_data="4" + 'Наши контакты'))
-markup_category.add(InlineKeyboardButton('Пригласить друга', callback_data="5" + 'Наши контакты'))
+# markup_category = InlineKeyboardMarkup()
+# markup_category.add(InlineKeyboardButton('Меню', callback_data="1" + 'Меню'))
+# markup_category.add(InlineKeyboardButton('Профиль', callback_data="2" + 'Профиль'))
+# markup_category.add(InlineKeyboardButton('Мои заказы', callback_data="3" + 'Мои заказы'))
+# markup_category.add(InlineKeyboardButton('Наши контакты', callback_data="4" + 'Наши контакты'))
+# markup_category.add(InlineKeyboardButton('Пригласить друга', callback_data="5" + 'Наши контакты'))
 
 
 @bot.message_handler(content_types=['text'])
@@ -19,6 +19,9 @@ def start(message):
     print(message.from_user.id)
 
     if message.text == '/start':
+
+        #Запись данных о пользователе
+
         bot.send_message(message.chat.id,
                          'Выберите интересующий для вас раздел',
                          reply_markup=markup_category)
