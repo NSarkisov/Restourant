@@ -644,7 +644,7 @@ class VkApi(object):
         :param error: исключение
         """
 
-        pass  # TODO: write me
+        pass
 
     def http_handler(self, error):
         """ Обработчик ошибок соединения
