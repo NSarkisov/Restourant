@@ -1,8 +1,5 @@
 import json
-import os
 import sqlite3
-import threading
-import gspread
 import requests
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, Update
