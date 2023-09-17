@@ -1,9 +1,5 @@
 import json
-<<<<<<< HEAD
 import os
-
-=======
->>>>>>> origin/main
 import gspread
 import requests
 import telebot
