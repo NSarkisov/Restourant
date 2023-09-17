@@ -25,7 +25,6 @@ con = sl.connect(database)
 
 @bot.message_handler(content_types=['text'])
 def start(message):
-
     if message.text == '/start':
         bot.send_message(message.chat.id, f"Привет {message.from_user.first_name}!\nМы рады приветствовать вас")
         bot.send_message(message.chat.id,
@@ -43,15 +42,6 @@ def start(message):
         #     with open("avatar.jpg", 'rb') as photo:
         #         bot.send_photo(message.chat.id, photo)
         #     os.remove("avatar.jpg")
-
-
-
-    if message.text == '/start':
-        #Запись данных о пользователе
-
-        bot.send_message(message.chat.id,
-                         'Выберите интересующий для вас раздел')
-
 
 
 @bot.callback_query_handler(func=lambda call: True)
