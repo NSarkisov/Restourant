@@ -26,10 +26,13 @@ con = sl.connect(database)
 @bot.message_handler(content_types=['text'])
 def start(message):
     if message.text == '/start':
+        user_id = message.from_user.id
+        name = message.from_user.first_name
+
         bot.send_message(message.chat.id, f"Привет {message.from_user.first_name}!\nМы рады приветствовать вас")
         bot.send_message(message.chat.id,
                          'Выберите интересующий для вас раздел')
-        con.execute("INSERT OR IGNORE INTO Пользователи (municipality, name, type) values (?, ?, ?)")
+        con.execute("INSERT OR IGNORE INTO Пользователи (Имя, Аватарка, ID TG) values (?, ?, ?)", )
         # user = message.from_user
         # photos = bot.get_user_profile_photos(user.id)
         # if photos.total_count > 0:
