@@ -2,14 +2,16 @@ from vk_api import VkApi
 from vk_api.utils import get_random_id
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
-from fuzzywuzzy import process
 import gspread, math, json
+import sqlite3 as sl
 
+with open('Config.json') as config_file:
+    config_data = json.load(config_file)
+    GROUP_ID = config_data['vk_token']['group_id']
+    GROUP_TOKEN = config_data['vk_token']['group_token']
+    API_VERSION = config_data['vk_token']['api_version']
 
-GROUP_ID = "ID from json.config"
-GROUP_TOKEN = "Token from json.config"
-API_VERSION = "Version from config"
-
+con = sl.connect('restaurant.db')
 vk_session = VkApi(token=GROUP_TOKEN, api_version=API_VERSION)
 vk = vk_session.get_api()
 longpoll = VkBotLongPoll(vk_session, group_id=GROUP_ID)
@@ -19,6 +21,7 @@ settings2 = dict(one_time=False, inline=True)
 
 
 
+print("Ready")
 
 for event in longpoll.listen():
     if event.type == VkBotEventType.MESSAGE_NEW:
@@ -31,6 +34,7 @@ for event in longpoll.listen():
                 elif event.obj.message['text'] ==
 
     elif event.type == VkBotEventType.MESSAGE_EVENT:
+        pass
 
 
 
