@@ -37,7 +37,7 @@ def products(data):
                            f'INNER JOIN [Разделы Меню] ON Позиции.[ID раздела] = [Разделы Меню]."ID"'
                            f'WHERE [Разделы Меню]."Название" = "{data}" OR Позиции.[ID раздела] in '
                            f'(SELECT "ID раздела" FROM Позиции WHERE Имя = "{data}")')
-    positions = InlineKeyboardMarkup()
+    positions = InlineKeyboardMarkup() #Кнопки
     temp = []
     for el in data.fetchall():
         temp.append(el[0])
