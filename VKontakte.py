@@ -131,7 +131,7 @@ for event in longpoll.listen():
            
             if event.object.payload.get('name') == 'Меню':
                 print(event.object.payload.get('name'))   #Меню
-                menu_section(event.object.payload.get('name'))
+                menu_section(event.object.payload.get('name'))  #вызов
                 last_id = vk.messages.edit(
                     peer_id=event.obj.peer_id,
                     message='Выбирайте',
