@@ -1,4 +1,4 @@
-from vk_api import VkApi
+from vk_api import VkApi, VkUpload
 from vk_api.utils import get_random_id
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
@@ -6,6 +6,8 @@ import gspread, math, json
 import sqlite3
 import sqlite3 as sl
 import requests
+from PIL import Image
+from io import BytesIO
 
 
 with open('Config.json') as config_file:
@@ -33,8 +35,23 @@ menu_keyboard.add_line()
 menu_keyboard.add_callback_button(label='Мои заказы', color=VkKeyboardColor.PRIMARY,
                                         payload={"type": "text", "name": "Мои заказы"})
 
+def reply_menu(txt):
+    
+    reply_keyboard = VkKeyboard(**settings)
+    
+    if txt == 'Начать':
+        reply_keyboard.add_button(label='Меню', color=VkKeyboardColor.PRIMARY, payload={"type": "text"})
+        reply_keyboard.add_line()
+   
+        reply_keyboard.add_button(label='Мои заказы', color=VkKeyboardColor.NEGATIVE, payload={"type": "text"})
+        reply_keyboard.add_line()
+    reply_keyboard.add_callback_button(label='Мы в Телеграме!', color=VkKeyboardColor.PRIMARY,
+                                       payload={"type": "open_link", "link": "https://t.me/SuperRestik_bot"})
+
+    return reply_keyboard
 
 def is_slider(board):
+    print(board)
     for el in board:
         if el is keyboard[0] and len(keyboard) != 1:
             el.add_callback_button(label='Далее', color=VkKeyboardColor.PRIMARY,
@@ -47,8 +64,8 @@ def is_slider(board):
         elif el is keyboard[-1] and len(keyboard) != 1:
             el.add_callback_button(label='Назад', color=VkKeyboardColor.PRIMARY,
                                     payload={"type": "slider", "index": keyboard.index(el) - 1})
-            el.add_callback_button(label='Меню', color=VkKeyboardColor.PRIMARY,
-                                    payload={"type": "text", "name": "Меню"})
+            el.add_callback_button(label='На главную', color=VkKeyboardColor.PRIMARY,
+                                    payload={"type": "text", "name": "На главную"})
         elif len(keyboard) == 1:
             el.add_callback_button(label='Меню', color=VkKeyboardColor.PRIMARY,
                                     payload={"type": "text", "name": "Меню"})
@@ -64,14 +81,57 @@ def menu_section(txt):   #Меню
             
         for i in range(math.ceil(len(data) / 5)):
             keyboard.append(VkKeyboard(**settings2))
-            print(i)
             for x in data[step:step+5]:
-                print(data[step:step+5])
                 if x != '':
-                    keyboard[i].add_callback_button(label=x, color=VkKeyboardColor.SECONDARY, payload={"type": "text", "name": x})
+                    keyboard[i].add_callback_button(label=x, color=VkKeyboardColor.SECONDARY, payload={"type": "position", "name": x})
                     keyboard[i].add_line()
             step += 5
     is_slider(keyboard)    
+    
+def products(obj):
+    lst = []
+    groups = []
+    name = obj.payload.get("name")
+    with con:
+        data = con.execute(f'SELECT Имя, Картинка, Описание, Стоимость FROM Позиции '
+                           f'INNER JOIN [Разделы Меню] ON Позиции.[ID раздела] = [Разделы Меню]."ID"'
+                           f'WHERE [Разделы Меню]."Название" = "{name}"')
+      
+    for el in data.fetchall():
+        name = el[0]
+        image = BytesIO(el[1])
+        upload = VkUpload(vk_session)
+        photo = upload.photo_messages(photos= image)
+       
+        # Получение информации о фото
+        photo_id = photo[0]['id']
+        owner_id = photo[0]['owner_id']
+        access_key = photo[0]['access_key']
+        attachment = f'photo{owner_id}_{photo_id}_{access_key}'
+        description = el[2]
+        cost = el[3]
+        caption = f"{name}\n{description}\nСтоимость: {cost}"
+        lst.append([name, image, description, cost])
+        print(lst)
+        step = 0
+        message_count = 0
+        while step < len(lst):
+            dish = lst[step:step+2]
+            keyboard = VkKeyboard(one_time=True)
+            keyboard.add_button('Назад', color=VkKeyboardColor.NEGATIVE)
+            keyboard.add_button('Далее', color=VkKeyboardColor.POSITIVE)
+            
+        vk.messages.send(        
+            peer_id=obj.peer_id,
+            random_id=get_random_id(),
+            message= caption,
+            attachment= attachment,
+            conversation_message_id=event.obj.conversation_message_id,
+            keyboard = keyboard.get_keyboard())  
+        message_count +=1
+        step +=2  
+   
+    
 
 print("Ready")
 
@@ -99,6 +159,21 @@ for event in longpoll.listen():
             
             if event.from_user:
                 if event.obj.message['text'] == 'Начать':
+                    key_board = reply_menu(event.obj.message['text'])
+                    vk.messages.send(
+                        user_id=event.obj.message['from_id'],
+                        random_id=get_random_id(),
+                        peer_id=event.obj.message['peer_id'],
+                        keyboard=key_board.get_keyboard(),
+                        message=f'1. Для заказа нажмите : "Меню"\n' \
+                           f'2. Выберите нужный раздел меню, если не нашли на первой странице, нажмите : "далее"\n' \
+                           f'3. Затем выберите блюдо и добавьте в корзину.\n' \
+                           f'4. Чтобы всегда оставаться на связи, подпишитесь на нас в ' \
+                           f'телеграмм канале, нажав кнопку : "Мы в Телеграме"')
+                   
+                    
+                elif event.obj.message['text'] == "Меню":
+                    print(event.obj.message['text'])
                     key_board = menu_keyboard
                     vk.messages.send(
                         user_id=event.obj.message['from_id'],
@@ -107,15 +182,6 @@ for event in longpoll.listen():
                         keyboard=key_board.get_keyboard(),
                         message= f'Что вы хотели бы заказать в нашем ресторане сегодня, {user_name}:')
                     
-                elif event.obj.message['text'] == "Меню":
-                    print(event.obj.message['text'])
-                    menu_section(event.obj.message['text'])
-                    vk.messages.send(
-                        user_id=event.obj.message['from_id'],
-                        random_id=get_random_id(),
-                        peer_id=event.obj.message['peer_id'],
-                        keyboard=keyboard[0].get_keyboard(),
-                        message='Выберите раздел меню!')
 
 
 
@@ -137,6 +203,17 @@ for event in longpoll.listen():
                     message='Выбирайте',
                     conversation_message_id=event.obj.conversation_message_id,
                     keyboard=keyboard[0].get_keyboard())
+                
+            if event.object.payload.get('name') == 'На главную':
+                last_id = vk.messages.edit(
+                    peer_id=event.obj.peer_id,
+                    message=f'Что вы хотели бы заказать в нашем ресторане сегодня, {user_name}:',
+                    conversation_message_id=event.obj.conversation_message_id,
+                    keyboard = menu_keyboard.get_keyboard())
+        elif event.object.payload.get('type') in "position":   
+            products(event.object)
+            
+            
 
         elif event.object.payload.get('type') == "slider":  # инлайн кнопка НАЗАД
                 index = event.object.payload.get("index")
