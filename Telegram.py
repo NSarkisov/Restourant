@@ -102,6 +102,14 @@ def select_count(count, case, group_id, group_el):
     return order_count
 
 
+def cart_processing():
+    data = []
+    cart = InlineKeyboardMarkup()
+    change_button = InlineKeyboardButton("Изменить", callback_data=json.dumps(data))
+    accept_order = InlineKeyboardButton("Подтвердить", callback_data=json.dumps(data))
+    cart.row(change_button, accept_order)
+    return cart
+
 @bot.message_handler(content_types=['text'])
 def start(message):
     if message.text == '/start':
@@ -155,7 +163,6 @@ def query_handler(call):
                                   text='Выберите категорию в Меню ⬇️',
                                   reply_markup=category(id))
         except:
-            bot.delete_message()
             bot.send_message(chat_id=call.message.chat.id,
                              text='Выберите категорию в Меню ⬇️',
                              reply_markup=category(id))
@@ -199,7 +206,7 @@ def query_handler(call):
                     total += cost
                 text += f"Итого: {total}.BYN"
                 bot.send_message(chat_id=call.message.chat.id,
-                                 text=text)
+                                 text=text, reply_markup=cart_processing())
     # if flag == "5":
     #     bot.edit_chat_invite_link(call.message.chat.id, )  # Здесь мы должны продумать как сделать приглашение
 
