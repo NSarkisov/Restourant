@@ -74,7 +74,7 @@ def select_product(data, chat_id, count):
     button_home = InlineKeyboardButton("Меню", callback_data="3")
     if count == 0:
         change_group.add(button_forward)
-    if count != 0 and count < (len(data) - 1):
+    if count != 0 and count < (len(data)):
         change_group.row(button_backward, button_forward)
     if count == len(data):
         change_group.add(button_home)
@@ -157,25 +157,19 @@ def query_handler(call):
             count -= 1
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           reply_markup=select_product(groups, id, count=count))
-
         if operation == "+":
             count += 1
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           reply_markup=select_product(groups, id, count=count))
 
     if flag == "4":
-
         operation = data[0]
-
         count = int(data[1:])
-
         if operation == "-":
             count -= 1
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           reply_markup=select_count(count))
-
         if operation == "+":
-            print("ok")
             count += 1
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           reply_markup=select_count(count))
