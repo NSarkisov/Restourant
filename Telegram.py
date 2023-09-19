@@ -16,28 +16,29 @@ with open("Config.json") as f:
 
 bot = telebot.TeleBot(Token)
 con = sl.connect(database, check_same_thread=False)
-cycle = {}
-temp = []  # поменять на словарь, возможна ошибка если несколько пользователей воспользуются ботом
-groups = []
+
+dict_users = {}
+# temp = []  # поменять на словарь, возможна ошибка если несколько пользователей воспользуются ботом
+# groups = []
 
 
-def category():
-    global temp
-    with con:
-        data = con.execute('Select Название from "Разделы Меню"')
-    markup_category = InlineKeyboardMarkup()
+def category(user_id):
     temp = []
+    with con:
+        data = con.execute('SELECT Название FROM "Разделы Меню"')
+    markup_category = InlineKeyboardMarkup()
+
+    flag = [1]
     for el in data.fetchall():
         temp.append(el[0])
-        markup_category.add(InlineKeyboardButton(el[0], callback_data="1" + str(temp.index(el[0]))))
+        index = temp.index(el[0])
+        markup_category.add(InlineKeyboardButton(el[0], callback_data=json.dumps(flag + [index])))
+    dict_users[user_id] = {"Выбранные Категории": temp}
     return markup_category
 
 
 def products(data, chat_id):
-    global temp, groups
-    temp = []
-    groups = []
-
+    temp, groups = [], []
     with con:
         data = con.execute(f'Select Имя, Картинка, Описание, Стоимость FROM Позиции '
                            f'INNER JOIN [Разделы Меню] ON Позиции.[ID раздела] = [Разделы Меню]."ID"'
@@ -48,56 +49,48 @@ def products(data, chat_id):
         image = Image.open(BytesIO(el[1]))
         description = el[2]
         cost = el[3]
-        # caption = f"{name}\n{description}\nСтоимость: {cost}"
         temp.append([name, image, description, cost])
+    # temp = [[],[],[],....,[]]
     step = 0
     for i in range(math.ceil(len(temp) / 2)):
         groups.append(temp[step:step + 2])
         step += 2
-    a = select_product(groups, chat_id, count=0)
-    return a
+    # groups = [[[],[]], [[],[]], ...., [[],[]]]
+
+    dict_users[chat_id].update({"groups": groups})
+
+    select_product(dict_users[chat_id]["groups"], chat_id, count=0)
 
 
 def select_product(data, chat_id, count):
-
-    # data это трехмерный список групп = [[[][]], [[][]],....,[[][]]]
-    # где внешний список это все группы,
-    # где подсписок всех групп это группа с двумя списками,
-    # где подсписки группы это списки входящие в группу,
-    # Для того что бы отправлять по две карточки продуктов в БОТ
-    # count служит выбором группы
-
-    # Задача на завтра заменить слайдер Инлайн кнопок на Реплай и посмотреть результат
-    change_group = InlineKeyboardMarkup()
-    button_forward = InlineKeyboardButton("⋙", callback_data="2" + "-" + f"{count}")
-    button_backward = InlineKeyboardButton("⋘", callback_data="2" + "-" + f"{count}")
-    button_home = InlineKeyboardButton("Меню", callback_data="3")
-    if count == 0:
-        change_group.add(button_forward)
-    if count != 0 and count < (len(data)):
-        change_group.row(button_backward, button_forward)
-    if count == len(data):
-        change_group.add(button_home)
-
-    for el in data[count]:
-        print(el)
+    for el in data[count]:  # data[count] = [[], []]
+        case = 0
         name = el[0]
         image = el[1]
         description = el[2]
         cost = el[3]
         caption = f"{name}\n{description}\nСтоимость: {cost}"
-        bot.send_photo(chat_id=chat_id, photo=image, caption=caption, reply_markup=select_count(count=0))
-    bot.send_message(chat_id, text="Показать еще", reply_markup= change_group)
+        if el == data[count][-1]:
+            case = "Next"
+            if count == (len(data) - 1):
+                case = "Menu"
+        bot.send_photo(chat_id=chat_id, photo=image, caption=caption,
+                       reply_markup=select_count(count=0, case=case, group_id=count))
 
 
-def select_count(count):
+def select_count(count, case, group_id):
+    data = [4, count, case, group_id]
     order_count = InlineKeyboardMarkup()
-    button_decrease = InlineKeyboardButton("➖", callback_data="4" + "-" + f"{count}")
-    number = InlineKeyboardButton(f"{count}", callback_data="4" + f"{count}")
-    button_increase = InlineKeyboardButton("➕", callback_data="4" + "+" + f"{count}")
+    button_decrease = InlineKeyboardButton("➖", callback_data=json.dumps(data + ["-"]))
+    number = InlineKeyboardButton(f"{count}", callback_data=json.dumps(data))
+    button_increase = InlineKeyboardButton("➕", callback_data=json.dumps(data + ["+"]))
     order_count.row(button_decrease, number, button_increase)
-    order_count.add(InlineKeyboardButton("Добавить", callback_data="4" + "add"))
-
+    order_count.add(InlineKeyboardButton("Добавить", callback_data=json.dumps(data + ["add"])))
+    if case == "Next":
+        order_count.add(InlineKeyboardButton("Следующие", callback_data=json.dumps(data + ["*"])))
+    if case == "Menu":
+        flag = [2]
+        order_count.add(InlineKeyboardButton("Меню", callback_data=json.dumps(flag)))
     return order_count
 
 
@@ -109,6 +102,7 @@ def start(message):
 
         name = message.from_user.first_name
         user_id = message.from_user.id
+        print(user_id)
         with con:
             con.execute('INSERT OR IGNORE INTO Пользователи (Имя, "ID TG") values (?, ?)', [name, user_id])
 
@@ -127,55 +121,69 @@ def start(message):
                                 f' where Имя = "{name}" and "ID TG" = {user_id}', [sqlite3.Binary(avatar)])
 
         bot.send_message(message.chat.id,
-                         'Выберите категорию в Меню ⬇️', reply_markup=category())
+                         'Выберите категорию в Меню ⬇️', reply_markup=category(user_id))
 
 
 @bot.callback_query_handler(func=lambda call: True)
 def query_handler(call):
-    global temp, groups
     bot.answer_callback_query(callback_query_id=call.id, )
     id = call.message.chat.id
+    call.data = json.loads(call.data)
     flag = call.data[0]
-    data = call.data[1:]
-    if flag == "1":
+    data = []
+
+    if len(call.data) > 1:
+        data = call.data[1:]
+
+    if flag == 1:
+        print(dict_users)
+        index = data[0]
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                              text="Выбирайте",
+                              reply_markup=products(dict_users[id].get("Выбранные Категории")[index], id))
+
+    if flag == 2:
         try:
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                  text="Выбирайте", reply_markup=products(temp[int(data)], id))
+                                  text='Выберите категорию в Меню ⬇️',
+                                  reply_markup=category(id))
         except:
-            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
-            bot.send_message(chat_id=call.message.chat.id, text="Выбирайте", reply_markup=products(temp[int(data)], id))
+            bot.send_message(chat_id=call.message.chat.id,
+                             text='Выберите категорию в Меню ⬇️',
+                             reply_markup=category(id))
 
-    if flag == "3":
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                              text='Выберите категорию в Меню ⬇️',
-                              reply_markup=category())
-
-    if flag == "2":
-        operation = data[0]
-        count = int(data[1:])
+    if flag == 4:
+        count, case, group_id, operation = data[0], data[1], data[2], data[3]
         if operation == "-":
-            count -= 1
-            bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=select_product(groups, id, count=count))
+            if count > 0:
+                count -= 1
+                bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                              reply_markup=select_count(count, case, group_id))
         if operation == "+":
             count += 1
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=select_product(groups, id, count=count))
-
-    if flag == "4":
-        operation = data[0]
-        count = int(data[1:])
-        if operation == "-":
-            count -= 1
+                                          reply_markup=select_count(count, case, group_id))
+        if operation == "*":
+            group_id += 1
+            case = 0
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=select_count(count))
-        if operation == "+":
-            count += 1
-            bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=select_count(count))
+                                          reply_markup=select_count(count, case, group_id))
+            select_product(dict_users[id]["groups"], id, count=group_id)
 
     # if flag == "5":
     #     bot.edit_chat_invite_link(call.message.chat.id, )  # Здесь мы должны продумать как сделать приглашение
+
+    # if flag == "2":
+    #     operation = data[0]
+    #     count = int(data[1:])
+    #     if operation == "-":
+    #         count -= 1
+    #         bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
+    #                                       reply_markup=select_product(groups, id, count=count))
+    #     if operation == "+":
+    #         count += 1
+    #         bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
+    #                                       reply_markup=select_product(groups, id, count=count))
 
 
 print("Telegram started successfully")
