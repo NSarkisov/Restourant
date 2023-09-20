@@ -1,13 +1,11 @@
 import json
 import math
-import sqlite3
 import requests
-import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMedia, InputMediaPhoto
-from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 import sqlite3 as sl
-from PIL import Image
+import telebot
 from io import BytesIO
+from PIL import Image
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 with open("Config.json") as f:
     config = json.load(f)
@@ -16,16 +14,10 @@ with open("Config.json") as f:
 
 bot = telebot.TeleBot(Token)
 con = sl.connect(database, check_same_thread=False)
-
 dict_users = {}
 
 
-# temp = []  # поменять на словарь, возможна ошибка если несколько пользователей воспользуются ботом
-# groups = []
-
-
 def category(user_id):
-
     temp = []
     with con:
         data = con.execute('SELECT Название FROM "Разделы Меню"')
@@ -164,7 +156,7 @@ def start(message):
                 avatar = response.content
                 with con:
                     con.execute(f'UPDATE OR IGNORE Пользователи SET Аватарка = ?'
-                                f' where Имя = "{name}" and "ID TG" = {user_id}', [sqlite3.Binary(avatar)])
+                                f' where Имя = "{name}" and "ID TG" = {user_id}', [sl.Binary(avatar)])
 
         bot.send_message(message.chat.id,
                          'Выберите категорию в Меню ⬇️', reply_markup=category(user_id))
