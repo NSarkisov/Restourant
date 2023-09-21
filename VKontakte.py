@@ -10,6 +10,7 @@ from PIL import Image
 from io import BytesIO
 
 
+
 with open('Config.json') as config_file:
     config_data = json.load(config_file)
     GROUP_ID = config_data['vk_token']['group_id']
@@ -23,7 +24,9 @@ settings = dict(one_time=False, inline=False)
 settings2 = dict(one_time=False, inline=True)
 CALLBACK_TYPES = ('show_snackbar', 'open_link', 'open_app')
 
+groups = []
 keyboard = []
+user = {}
 
 menu_keyboard = VkKeyboard(**settings2)
 menu_keyboard.add_callback_button(label='Меню', color=VkKeyboardColor.PRIMARY,
@@ -51,7 +54,6 @@ def reply_menu(txt):
     return reply_keyboard
 
 def is_slider(board):
-    print(board)
     for el in board:
         if el is keyboard[0] and len(keyboard) != 1:
             el.add_callback_button(label='Далее', color=VkKeyboardColor.PRIMARY,
@@ -70,10 +72,11 @@ def is_slider(board):
             el.add_callback_button(label='Меню', color=VkKeyboardColor.PRIMARY,
                                     payload={"type": "text", "name": "Меню"})
 
-def menu_section(txt):   #Меню
+def menu_section(txt, user_id):   #Меню
     global keyboard
     keyboard.clear()
     step = 0
+    user_lst = []
     if txt == "Меню":
         with con:
             data = con.execute("SELECT Название FROM 'Разделы Меню'")
@@ -86,51 +89,91 @@ def menu_section(txt):   #Меню
                     keyboard[i].add_callback_button(label=x, color=VkKeyboardColor.SECONDARY, payload={"type": "position", "name": x})
                     keyboard[i].add_line()
             step += 5
+        user[user_id] = {"position": user_lst}    
+        print(user)
     is_slider(keyboard)    
     
+    
 def products(obj):
+    global groups
     lst = []
-    groups = []
+    step = 0
+    groups=[]
+    #count = 0
     name = obj.payload.get("name")
     with con:
         data = con.execute(f'SELECT Имя, Картинка, Описание, Стоимость FROM Позиции '
                            f'INNER JOIN [Разделы Меню] ON Позиции.[ID раздела] = [Разделы Меню]."ID"'
                            f'WHERE [Разделы Меню]."Название" = "{name}"')
-      
     for el in data.fetchall():
         name = el[0]
         image = BytesIO(el[1])
+        description = el[2]
+        cost = el[3]
+       #caption = f"{name}\n{description}\nСтоимость: {cost}"
+        lst.append([name, image, description, cost])
+    for i in range(math.ceil(len(lst) / 2)):
+        groups.append(lst[step:step + 2])  #[[[],[]], [[],[]],...]
+        step += 2
+    user[obj.user_id].update({"groups": groups})    
+    print(groups)  
+    print(user)       
+    grouping(groups, obj, count =0)  
+           
+def grouping(data, obj, count):
+    print(count)
+    #if count < len(data):
+    for el in data[count]:
+        name = el[0]
+        image = el[1]
+        image.seek(0) 
         upload = VkUpload(vk_session)
-        photo = upload.photo_messages(photos= image)
-       
+        photo = upload.photo_messages(photos= image)[0]
         # Получение информации о фото
-        photo_id = photo[0]['id']
-        owner_id = photo[0]['owner_id']
-        access_key = photo[0]['access_key']
+        photo_id = photo['id']
+        owner_id = photo['owner_id']
+        access_key = photo['access_key']
         attachment = f'photo{owner_id}_{photo_id}_{access_key}'
         description = el[2]
         cost = el[3]
         caption = f"{name}\n{description}\nСтоимость: {cost}"
-        lst.append([name, image, description, cost])
-        print(lst)
-        step = 0
-        message_count = 0
-        while step < len(lst):
-            dish = lst[step:step+2]
-            keyboard = VkKeyboard(one_time=True)
-            keyboard.add_button('Назад', color=VkKeyboardColor.NEGATIVE)
-            keyboard.add_button('Далее', color=VkKeyboardColor.POSITIVE)
-            
-        vk.messages.send(        
-            peer_id=obj.peer_id,
-            random_id=get_random_id(),
-            message= caption,
-            attachment= attachment,
-            conversation_message_id=event.obj.conversation_message_id,
-            keyboard = keyboard.get_keyboard())  
-        message_count +=1
-        step +=2  
-   
+        case = 0
+        if el == data[count][-1]:   #[[],[]], здесь data[count] это группа из 2 эл
+            case= 'Next'
+            if count == len(data)-1:  #если count = длинне группы -1 
+                case = 'Меню' 
+        vk.messages.send(
+                peer_id=obj.peer_id,
+                random_id=get_random_id(),
+                message= caption,
+                attachment= attachment,
+                conversation_message_id=event.obj.conversation_message_id,
+                keyboard=button_of_cards(case, count = 0, group_id = count, group_number=data[count].index(el)).get_keyboard())  
+        
+def button_of_cards(case, count, group_id, group_number):
+    data = [case, count, group_id, group_number]   #print(data)   #['Next', 0, 0]
+    count = 1
+    keyboard = VkKeyboard(**settings2)
+    keyboard.add_callback_button(label='<<', color=VkKeyboardColor.PRIMARY,
+                                payload={"type": "карточка", "name": "-", "data":data})
+    keyboard.add_callback_button(f'{count}', color=VkKeyboardColor.PRIMARY,
+                                payload={"type": "карточка", "name": "number"})
+    keyboard.add_callback_button(label='>>', color=VkKeyboardColor.PRIMARY,
+                                payload={"type": "карточка", "name": "+", "data":data})
+    keyboard.add_line()
+    keyboard.add_callback_button(label='Добавить', color=VkKeyboardColor.PRIMARY,
+                                payload={"type": "карточка", "name": "Добавить", "data":data})
+    keyboard.add_callback_button(label='Корзина', color=VkKeyboardColor.PRIMARY,
+                            payload={"type": "карточка", "name": "Корзина", "data":data})
+    if case == 'Next':
+        keyboard.add_callback_button(label='Следующие', color=VkKeyboardColor.PRIMARY,
+                                    payload={"type": "карточка", "name": "Следующие",  "data":data })
+    if case == 'Меню':
+        keyboard.add_callback_button(label='Меню', color=VkKeyboardColor.PRIMARY,
+                                    payload={"type": "text", "name": "Меню"})
+    
+    return keyboard
+
     
 
 print("Ready")
@@ -156,7 +199,6 @@ for event in longpoll.listen():
                 with con:
                     con.execute('UPDATE OR IGNORE Пользователи SET Аватарка = ? WHERE "ID Vk" = ?', [sqlite3.Binary(avatar_data), user_id])
             
-            
             if event.from_user:
                 if event.obj.message['text'] == 'Начать':
                     key_board = reply_menu(event.obj.message['text'])
@@ -170,10 +212,8 @@ for event in longpoll.listen():
                            f'3. Затем выберите блюдо и добавьте в корзину.\n' \
                            f'4. Чтобы всегда оставаться на связи, подпишитесь на нас в ' \
                            f'телеграмм канале, нажав кнопку : "Мы в Телеграме"')
-                   
                     
                 elif event.obj.message['text'] == "Меню":
-                    print(event.obj.message['text'])
                     key_board = menu_keyboard
                     vk.messages.send(
                         user_id=event.obj.message['from_id'],
@@ -182,9 +222,6 @@ for event in longpoll.listen():
                         keyboard=key_board.get_keyboard(),
                         message= f'Что вы хотели бы заказать в нашем ресторане сегодня, {user_name}:')
                     
-
-
-
 
     elif event.type == VkBotEventType.MESSAGE_EVENT:
         if event.object.payload.get('type') in CALLBACK_TYPES:
@@ -195,12 +232,11 @@ for event in longpoll.listen():
                         event_data=json.dumps(event.object.payload))
         elif event.object.payload.get('type') in "text":
            
-            if event.object.payload.get('name') == 'Меню':
-                print(event.object.payload.get('name'))   #Меню
-                menu_section(event.object.payload.get('name'))  #вызов
+            if event.object.payload.get('name') == 'Меню':     #Меню
+                menu_section(event.object.payload.get('name'), event.object.user_id)  #вызов
                 last_id = vk.messages.edit(
                     peer_id=event.obj.peer_id,
-                    message='Выбирайте',
+                    message=f'Что вы хотели бы заказать в нашем ресторане сегодня, {user_name}:',
                     conversation_message_id=event.obj.conversation_message_id,
                     keyboard=keyboard[0].get_keyboard())
                 
@@ -210,20 +246,63 @@ for event in longpoll.listen():
                     message=f'Что вы хотели бы заказать в нашем ресторане сегодня, {user_name}:',
                     conversation_message_id=event.obj.conversation_message_id,
                     keyboard = menu_keyboard.get_keyboard())
-        elif event.object.payload.get('type') in "position":   
+        elif event.object.payload.get('type') in "position":  
+            #print(event.object) #{'user_id': 7995642, 'peer_id': 7995642, 'event_id': 'f4c6337841b8', 'payload': {'type': 'position', 'name': 'Первые блюда'}, 'conversation_message_id': 530}
             products(event.object)
-            
-            
-
+        
         elif event.object.payload.get('type') == "slider":  # инлайн кнопка НАЗАД
-                index = event.object.payload.get("index")
-                last_id = vk.messages.edit(
-                    peer_id=event.obj.peer_id,
-                    message='Выбирай категорию',
-                    conversation_message_id=event.obj.conversation_message_id,
-                    keyboard=keyboard[index].get_keyboard())
+            index = event.object.payload.get("index")
+            last_id = vk.messages.edit(
+                peer_id=event.obj.peer_id,
+                message='Выбирай категорию',
+                conversation_message_id=event.obj.conversation_message_id,
+                keyboard=keyboard[index].get_keyboard())
 
-
-
+        elif event.object.payload.get('type') == "карточка":  
+            #print(event.object.payload)    #{'type': 'карточка', 'name': 'Следующие', 'data': ['Next', 0, 0]}
+            name = event.object.payload.get('name')
+            data = event.object.payload.get('data')    # data = case, count, group_id
+            case, count, group_id, group_number = data[0], data[1], data[2], data[3]
+            if name == '-':
+                if count >0:
+                    count -=1
+                    vk.messages.updateKeyboard(
+                            peer_id=event.obj.peer_id,
+                            conversation_message_id=event.obj.conversation_message_id,
+                            keyboard=button_of_cards(case, count, group_id).get_keyboard()
+                        )
+            if name == '+':
+                count +=1
+                vk.messages.updateKeyboard(
+                         peer_id=event.obj.peer_id,
+                            conversation_message_id=event.obj.conversation_message_id,
+                            keyboard=button_of_cards(case, count, group_id).get_keyboard()
+                        )     
+            if name == 'Следующие': 
+                group_id +=1
+                case = 0
+                grouping(groups, event.object, group_id)
+            
+            if name =='Добавить':
+                name = user[event.object.user_id]["groups"][group_id][group_number][0]
+                cost = user[event.object.user_id]["groups"][group_id][group_number][3]
+                if 'bag' not in user.keys():
+                    user[event.object.user_id].update({'bag':[[name, count, cost]]}) 
+                else:
+                    user[event.object.user_id]['bag'] += [[name, count, cost]]
+                print(user[event.object.user_id])
+            if name == 'Корзина':
+                if  'bag' not in user[event.object.user_id].keys() or user[event.object.user_id]['bag'] is None:
+                    vk.messages.send(
+                        user_id=event.obj.user_id,
+                        random_id=get_random_id(),
+                        peer_id=event.obj.peer_id,
+                        message= f'{user_name}, к сожалению корзина пуста. Добавьте позицию!')
+                else:
+                    print(user[event.object.user_id]['bag'])
+                    for x in user[event.object.user_id]['bag']:
+                        price = []
+                        if len(user[event.object.user_id]['bag']) > 1:
+                            price.append 
 if __name__ == '__main__':
     print()
