@@ -75,7 +75,7 @@ def select_product(data, chat_id, count):
             if count == (len(data) - 1):
                 case = "Menu"
         bot.send_photo(chat_id=chat_id, photo=image, caption=caption,
-                       reply_markup=select_count(count=0, case=case, group_id=count, group_el=index))
+                       reply_markup=select_count(count=1, case=case, group_id=count, group_el=index))
 
 
 def select_count(count, case, group_id, group_el):
@@ -101,34 +101,42 @@ def select_count(count, case, group_id, group_el):
     return order_count
 
 
-def cart_processing(case, chat_id, group):
+def cart_processing(case, chat_id):
     flag = [4, ""]
 
     cart_buttons = InlineKeyboardMarkup()
+    menu = InlineKeyboardButton("Меню", callback_data=json.dumps([2]))
     change_button = InlineKeyboardButton("Изменить", callback_data=json.dumps(flag + ["change"]))
     accept_order = InlineKeyboardButton("Подтвердить", callback_data=json.dumps(flag + ["accept"]))
-    menu = InlineKeyboardButton("Меню", callback_data=json.dumps([2]))
+
+    accept_changes = InlineKeyboardButton("Изменить", callback_data=json.dumps(flag + ["Изменить"]))
+    back_button = InlineKeyboardButton("Назад", callback_data=json.dumps(flag + ["back"]))
 
     if case == "show":
         cart_buttons.row(change_button, menu, accept_order)
+    if case == "change":
+        if "Изменённая Корзина" not in dict_users[chat_id].keys() or dict_users[chat_id]["Изменённая Корзина"] is None:
+            dict_users[chat_id]["Изменённая Корзина"] = dict_users[chat_id]["Корзина"]
 
-    if case[0] == "change":
-        cart = dict_users[chat_id]["Новая Корзина"][group]
-        count = cart[2]
+        for el in dict_users[chat_id]["Изменённая Корзина"]:
+            name = el[0]
+            cost = el[1] * el[2]
+            amount = el[2]
+            index = dict_users[chat_id]["Изменённая Корзина"].index(el)
+            button_decrease = InlineKeyboardButton("<", callback_data=json.dumps(flag + ["<"] + [index]))
+            button_increase = InlineKeyboardButton(">", callback_data=json.dumps(flag + [">"] + [index]))
+            button_delete = InlineKeyboardButton("X", callback_data=json.dumps(flag + ["x"] + [index]))
+            amount_btn = InlineKeyboardButton(f"{index + 1}: {amount}",
+                                              callback_data=json.dumps(flag))
+            cost_btn = InlineKeyboardButton(f"Цена: {cost}", callback_data=json.dumps(flag))
+            cart_buttons.row(button_decrease, amount_btn, cost_btn, button_increase, button_delete)
+            if el is dict_users[chat_id]["Изменённая Корзина"][-1]:
+                cart_buttons.row(back_button, menu, accept_changes)
+        if len(dict_users[chat_id]["Изменённая Корзина"]) == 0:
+            cart_buttons.row(back_button, menu, accept_changes)
 
-        button_decrease = InlineKeyboardButton("➖", callback_data=json.dumps(flag + ["-"] + [group] + [case[1]]))
-        number = InlineKeyboardButton(f"{count}", callback_data=json.dumps(flag))
-        button_increase = InlineKeyboardButton("➕", callback_data=json.dumps(flag + ["+"] + [group] + [case[1]]))
-
-        cart_buttons.row(button_decrease, number, button_increase)
-
-        if case[1]:
-            flag = [5, ""]
-            accept_changes = InlineKeyboardButton("Принять", callback_data=json.dumps(flag + ["Принять"] + [group]))
-            cancel_changes = InlineKeyboardButton("Отмена", callback_data=json.dumps(flag + ["Отмена"] + [group]))
-            cart_buttons.row(cancel_changes, accept_changes)
-        # print("Добавь код")
-
+    if case == "Menu":
+        cart_buttons.add(menu)
     return cart_buttons
 
 
@@ -190,6 +198,7 @@ def query_handler(call):
                              reply_markup=category(id))
 
     if flag == 3:
+
         count, case, group_id, group_el, operation = data[0], data[1], data[2], data[3], data[4]
         if operation == "-":
             if count > 0:
@@ -207,11 +216,15 @@ def query_handler(call):
                                           reply_markup=select_count(count, case, group_id, group_el))
             select_product(dict_users[id]["groups"], id, count=group_id)
         if operation == "add":
-            reset_count = 0
-            bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=select_count(reset_count, case, group_id, group_el))
+            reset_count = 1
+            if reset_count != count:
+                bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                              reply_markup=select_count(reset_count, case, group_id, group_el))
             name = dict_users[id]["groups"][group_id][group_el][0]
             price = dict_users[id]["groups"][group_id][group_el][3]
+            bot.send_message(chat_id=call.message.chat.id,
+                             text=f'Успешно добавлено:\n'
+                                  f'{name}: {count} шт. на сумму: {count * price}')
             if "Корзина" not in dict_users[id].keys():
                 dict_users[id].update({"Корзина": [[name, price, count]]})
             else:
@@ -225,94 +238,80 @@ def query_handler(call):
                 indexing = 1
                 total = 0
                 for el in dict_users[id]["Корзина"]:
-                    cost = int(el[1][0:-5]) * int(el[2])
+                    cost = el[1] * el[2]
                     text += f"{indexing}. {el[0]}, кол-во: {el[2]} сумма: {cost}.BYN\n"
                     indexing += 1
                     total += cost
-                text += f"Итого: {total}.BYN"
+                text += f"Итого: {total} BYN"
                 bot.send_message(chat_id=call.message.chat.id,
-                                 text=text, reply_markup=cart_processing(case="show", chat_id=id, group=None))
+                                 text=text,
+                                 reply_markup=cart_processing(case="show", chat_id=id))
 
     if flag == 4:
         operation = data[1]
-        cart = dict_users[id]["Корзина"]
-        dict_users[id]["Новая Корзина"] = cart
-        new_cart = dict_users[id]["Новая Корзина"]
+        index = 0
+        if len(data) > 2:
+            index = data[2]
         if operation == "change":
-            for el in new_cart:
-                name = el[0]
-                index = cart.index(el)
-                cost = int(el[1][0:-5])
-                count = el[2]
-                if el is not cart[-1]:
-                    bot.send_message(chat_id=call.message.chat.id,
-                                     text=name,
-                                     reply_markup=cart_processing(case=["change", False], chat_id=id, group=index))
-                else:
-                    bot.send_message(chat_id=call.message.chat.id,
-                                     text=name,
-                                     reply_markup=cart_processing(case=["change", True], chat_id=id, group=index))
-        if operation == "-":
-            index = data[2]
-            price = new_cart[index][2]
-            last_btns = data[3]
-            if price > 0:
-                price -= 1
-                new_cart[index][2] = price
+            bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                          reply_markup=cart_processing(case="change", chat_id=id))
+        if operation == "<":
+            amount = dict_users[id]["Изменённая Корзина"][index][2]
+            amount -= 1
+            if amount >= 0:
+                dict_users[id]["Изменённая Корзина"][index][2] = amount
                 bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                              reply_markup=cart_processing(case=["change", last_btns],
-                                                                           chat_id=id, group=index))
-
-        if operation == "+":
-            index = data[2]
-            price = new_cart[index][2]
-            last_btns = data[3]
-            price += 1
-            new_cart[index][2] = price
+                                              reply_markup=cart_processing(case="change", chat_id=id))
+        if operation == ">":
+            amount = dict_users[id]["Изменённая Корзина"][index][2]
+            amount += 1
+            dict_users[id]["Изменённая Корзина"][index][2] = amount
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=cart_processing(case=["change", last_btns],
-                                                                       chat_id=id, group=index))
-
-        if operation == "accept":
-            print("Добавь код")
-
-    if flag == 5:
-        operation = data[1]
-        index = data[2]
-        if operation == "Принять":
-            dict_users[id]["Корзина"] = dict_users[id]["Новая Корзина"]
-
-            text = "Выбраные позиции меню:\n"
-            indexing = 1
-            total = 0
-            for el in dict_users[id]["Корзина"]:
-                cost = int(el[1][0:-5]) * int(el[2])
-                text += f"{indexing}. {el[0]}, кол-во: {el[2]} сумма: {cost}.BYN\n"
-                indexing += 1
-                total += cost
-            text += f"Итого: {total}.BYN"
+                                          reply_markup=cart_processing(case="change", chat_id=id))
+        if operation == "x":
+            del dict_users[id]["Изменённая Корзина"][index]
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=cart_processing(case=["change", False], chat_id=id, group=index))
-            del dict_users[id]["Новая Корзина"]
-            bot.send_message(chat_id=call.message.chat.id,
-                             text=text, reply_markup=cart_processing(case="show", chat_id=id, group=None))
-
-        if operation == "Отмена":
-
-            text = "Выбраные позиции меню:\n"
-            indexing = 1
-            total = 0
-            for el in dict_users[id]["Корзина"]:
-                cost = int(el[1][0:-5]) * int(el[2])
-                text += f"{indexing}. {el[0]}, кол-во: {el[2]} сумма: {cost}.BYN\n"
-                indexing += 1
-                total += cost
-            text += f"Итого: {total}.BYN"
+                                          reply_markup=cart_processing(case="change", chat_id=id))
+        if operation == "back":
+            del dict_users[id]["Изменённая Корзина"]
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=cart_processing(case=["change", False], chat_id=id, group=index))
-            del dict_users[id]["Новая Корзина"]
-            bot.send_message(chat_id=call.message.chat.id,
-                             text=text, reply_markup=cart_processing(case="show", chat_id=id, group=None))
+                                          reply_markup=cart_processing(case="show", chat_id=id))
+
+        if operation == "Изменить":
+            if len(dict_users[id]["Изменённая Корзина"]) == 0:
+                del dict_users[id]["Изменённая Корзина"]
+                del dict_users[id]["Корзина"]
+                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                      text="После изменений Ваша корзина пуста\n"
+                                           "Вернитесь пожалуйста в Меню",
+                                      reply_markup=cart_processing(case="Menu", chat_id=id))
+            else:
+                dict_users[id]["Корзина"] = dict_users[id]["Изменённая Корзина"]
+                temp = []
+                for el in dict_users[id]["Корзина"]:
+                    if el[2] != 0:
+                        temp.append(el)
+                dict_users[id]["Корзина"] = temp
+
+                if len(dict_users[id]["Корзина"]) == 0:
+                    del dict_users[id]["Корзина"], dict_users[id]["Изменённая Корзина"]
+                    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                          text="После изменений Ваша корзина пуста\n"
+                                               "Вернитесь пожалуйста в Меню",
+                                          reply_markup=cart_processing(case="Menu", chat_id=id))
+                else:
+                    del dict_users[id]["Изменённая Корзина"]
+                    text = "Выбраные позиции меню:\n"
+                    indexing = 1
+                    total = 0
+                    for el in dict_users[id]["Корзина"]:
+                        cost = el[1] * el[2]
+                        text += f"{indexing}. {el[0]}, кол-во: {el[2]} сумма: {cost}.BYN\n"
+                        indexing += 1
+                        total += cost
+                    text += f"Итого: {total} BYN"
+                    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                          text=text, reply_markup=cart_processing(case="show", chat_id=id))
 
 
 print("Telegram started successfully")
