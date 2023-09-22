@@ -149,6 +149,10 @@ def order_accepting(case, chat_id):
         order_not_right = InlineKeyboardButton("Не верно", callback_data=json.dumps(flag + ["back"]))
         order.row(order_not_right, order_is_right)
         return order
+
+    if case == "Hide":
+        return None
+
     if case == "delivery":
         flag = [5, '']
         delivery = InlineKeyboardMarkup()
@@ -157,6 +161,7 @@ def order_accepting(case, chat_id):
         in_restaurant = InlineKeyboardButton("В заведении", callback_data=json.dumps(flag + ["restaurant"]))
         delivery.add(by_delivery, by_users_self, in_restaurant)
         return delivery
+
     if case == "address":
         flag = [5, '']
         address = InlineKeyboardMarkup()
@@ -171,27 +176,51 @@ def order_accepting(case, chat_id):
         location.add(send_geolocation)
         return location
 
+    if case == "Address confirmation":
+        flag = [5, '']
+        address_is_ok = InlineKeyboardMarkup()
+        no = InlineKeyboardButton("Нет", callback_data=json.dumps(flag + ['No']))
+        yes = InlineKeyboardButton("Да", callback_data=json.dumps(flag + ['Yes']))
+        address_is_ok.row(no, yes)
+        return address_is_ok
+
 
 @bot.message_handler(content_types=['location'])
 def location(geodata):
-    # print(geodata.location)
+    ReplyKeyboardRemove(selective=location)
+    user_id = geodata.from_user.id
+    chat_id = geodata.chat.id
+    message_id = geodata.message_id
     longitude = geodata.location.longitude
     latitude = geodata.location.latitude
-    # print(longitude, latitude)
     url = f"https://geocode-maps.yandex.ru/1.x/?apikey={geocoder_api}&format=json&geocode={longitude},{latitude}"
     response = requests.get(url).json()
+    take_address = ['response', 'GeoObjectCollection', 'featureMember', 0, 'GeoObject', 'metaDataProperty',
+                    'GeocoderMetaData', 'Address', 'formatted']
+    for x in take_address:
+        response = response[x]
+    response = response.split(', ')  # ['Беларусь', 'Минск', 'улица Франциска Скорины', '8к1']
     print(response)
+    question = f"Ваш адрес {','.join(response[2:])}?"
+    if len(response) == 3:
+        dict_users[user_id]["Оформление"].append([response[2]])
+    else:
+        dict_users[user_id]["Оформление"].append([response[2], response[3]])
+    bot.send_message(chat_id=chat_id, text=question,
+                     reply_markup=order_accepting(case="Address confirmation", chat_id=user_id))
 
 
 @bot.message_handler(content_types=['text'])
 def start(message):
+    # print("Новое сообщение \n\n")
+    # print(message)
+    user_id = message.from_user.id
     if message.text == '/start':
 
         bot.send_message(message.chat.id, f"Привет {message.from_user.first_name}!\nМы рады приветствовать вас")
 
         name = message.from_user.first_name
-        user_id = message.from_user.id
-        print(user_id)
+
         with con:
             con.execute('INSERT OR IGNORE INTO Пользователи (Имя, "ID TG") values (?, ?)', [name, user_id])
 
@@ -211,6 +240,13 @@ def start(message):
 
         bot.send_message(message.chat.id,
                          'Выберите категорию в Меню ⬇️', reply_markup=category(user_id))
+
+    if "Оформление" in dict_users[user_id].keys():
+        if len(dict_users[user_id]["Оформление"][1]) == 1:
+            dict_users[user_id]["Оформление"][1].append(message.text)
+            bot.send_message(chat_id=user_id, text="Введите номер дома")
+        if len(dict_users[user_id]["Оформление"][1]) == 2:
+            dict_users[user_id]["Оформление"][1].append(message.text)
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -370,6 +406,8 @@ def query_handler(call):
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   text=text, reply_markup=order_accepting(case="confirmation", chat_id=id))
         if operation == "right":
+            bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                          reply_markup=order_accepting(case="Hide", chat_id=id))
             bot.send_message(chat_id=id, text="Как желаете получить заказ?",
                              reply_markup=order_accepting(case="delivery", chat_id=id))
 
@@ -379,9 +417,10 @@ def query_handler(call):
             dict_users[id]["Оформление"] = []
         if operation == "by_delivery":
             dict_users[id]["Оформление"].append("Доставка")
-            bot.send_message(chat_id=id, text="Отправьте своё местоположение\n"
-                                              "или укажите адрес в ручную",
-                             reply_markup=order_accepting(case="address", chat_id=id))
+            bot.edit_message_text(chat_id=id, message_id=call.message.message_id,
+                                  text="Отправьте своё местоположение\n"
+                                       "или укажите адрес в ручную",
+                                  reply_markup=order_accepting(case="address", chat_id=id))
         if operation == "self":
             dict_users[id]["Оформление"].append("Самовывоз")
             bot.send_message(chat_id=id, text="Отправьте своё местоположение\n"
@@ -397,6 +436,12 @@ def query_handler(call):
                              reply_markup=order_accepting(case="Geolocation", chat_id=id))
 
         # if operation == "Вручную":
+        if operation == "Yes":
+            print(dict_users[id]["Оформление"])
+            if len(dict_users[id]["Оформление"][1]) == 1:
+                bot.edit_message_text(chat_id=id, message_id=call.message.message_id, text="Напишите номер дома")
+            else:
+                bot.edit_message_text(chat_id=id, message_id=call.message.message_id, text="Укажите номер квартиры")
 
 
 print("Telegram started successfully")
