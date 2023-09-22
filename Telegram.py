@@ -6,12 +6,13 @@ import telebot
 from io import BytesIO
 from PIL import Image
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
 
 with open("Config.json") as f:
     config = json.load(f)
     Token = config.get("telegram_token")
     database = config.get("database_path")
-
+geocoder_api = "acb5559a-b528-4544-a005-03647e92e708"
 bot = telebot.TeleBot(Token)
 con = sl.connect(database, check_same_thread=False)
 dict_users = {}
@@ -128,7 +129,7 @@ def cart_processing(case, chat_id):
             button_delete = InlineKeyboardButton("X", callback_data=json.dumps(flag + ["x"] + [index]))
             amount_btn = InlineKeyboardButton(f"{index + 1}: {amount}",
                                               callback_data=json.dumps(flag))
-            cost_btn = InlineKeyboardButton(f"Цена: {cost}", callback_data=json.dumps(flag))
+            cost_btn = InlineKeyboardButton(f"{cost}", callback_data=json.dumps(flag))
             cart_buttons.row(button_decrease, amount_btn, cost_btn, button_increase, button_delete)
             if el is dict_users[chat_id]["Изменённая Корзина"][-1]:
                 cart_buttons.row(back_button, menu, accept_changes)
@@ -138,6 +139,48 @@ def cart_processing(case, chat_id):
     if case == "Menu":
         cart_buttons.add(menu)
     return cart_buttons
+
+
+def order_accepting(case, chat_id):
+    if case == "confirmation":
+        flag = [4, '']
+        order = InlineKeyboardMarkup()
+        order_is_right = InlineKeyboardButton("Верно", callback_data=json.dumps(flag + ["right"]))
+        order_not_right = InlineKeyboardButton("Не верно", callback_data=json.dumps(flag + ["back"]))
+        order.row(order_not_right, order_is_right)
+        return order
+    if case == "delivery":
+        flag = [5, '']
+        delivery = InlineKeyboardMarkup()
+        by_delivery = InlineKeyboardButton("Доставка", callback_data=json.dumps(flag + ["by_delivery"]))
+        by_users_self = InlineKeyboardButton("Самовывоз", callback_data=json.dumps(flag + ["self"]))
+        in_restaurant = InlineKeyboardButton("В заведении", callback_data=json.dumps(flag + ["restaurant"]))
+        delivery.add(by_delivery, by_users_self, in_restaurant)
+        return delivery
+    if case == "address":
+        flag = [5, '']
+        address = InlineKeyboardMarkup()
+        geolocation = InlineKeyboardButton("Геолокация", callback_data=json.dumps(flag + ["geo"]))
+        manual_input = InlineKeyboardButton("Вручную", callback_data=json.dumps(flag + ["manual"]))
+        address.row(manual_input, geolocation)
+        return address
+
+    if case == "Geolocation":
+        location = ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+        send_geolocation = KeyboardButton(text="Отправить Геолокацию", request_location=True)
+        location.add(send_geolocation)
+        return location
+
+
+@bot.message_handler(content_types=['location'])
+def location(geodata):
+    # print(geodata.location)
+    longitude = geodata.location.longitude
+    latitude = geodata.location.latitude
+    # print(longitude, latitude)
+    url = f"https://geocode-maps.yandex.ru/1.x/?apikey={geocoder_api}&format=json&geocode={longitude},{latitude}"
+    response = requests.get(url).json()
+    print(response)
 
 
 @bot.message_handler(content_types=['text'])
@@ -173,6 +216,7 @@ def start(message):
 @bot.callback_query_handler(func=lambda call: True)
 def query_handler(call):
     bot.answer_callback_query(callback_query_id=call.id, )
+
     id = call.message.chat.id
     call.data = json.loads(call.data)
     flag = call.data[0]
@@ -273,7 +317,8 @@ def query_handler(call):
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           reply_markup=cart_processing(case="change", chat_id=id))
         if operation == "back":
-            del dict_users[id]["Изменённая Корзина"]
+            if "Изменённая Корзина" in dict_users[id].keys():
+                del dict_users[id]["Изменённая Корзина"]
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           reply_markup=cart_processing(case="show", chat_id=id))
 
@@ -312,6 +357,46 @@ def query_handler(call):
                     text += f"Итого: {total} BYN"
                     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           text=text, reply_markup=cart_processing(case="show", chat_id=id))
+        if operation == "accept":
+            text = "Ваш заказ:\n"
+            indexing = 1
+            total = 0
+            for el in dict_users[id]["Корзина"]:
+                cost = el[1] * el[2]
+                text += f"{indexing}. {el[0]}, кол-во: {el[2]} сумма: {cost}.BYN\n"
+                indexing += 1
+                total += cost
+            text += f"Итого: {total} BYN"
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  text=text, reply_markup=order_accepting(case="confirmation", chat_id=id))
+        if operation == "right":
+            bot.send_message(chat_id=id, text="Как желаете получить заказ?",
+                             reply_markup=order_accepting(case="delivery", chat_id=id))
+
+    if flag == 5:
+        operation = data[1]
+        if "Оформление" not in dict_users[id].keys() or dict_users[id]["Оформление"] is None:
+            dict_users[id]["Оформление"] = []
+        if operation == "by_delivery":
+            dict_users[id]["Оформление"].append("Доставка")
+            bot.send_message(chat_id=id, text="Отправьте своё местоположение\n"
+                                              "или укажите адрес в ручную",
+                             reply_markup=order_accepting(case="address", chat_id=id))
+        if operation == "self":
+            dict_users[id]["Оформление"].append("Самовывоз")
+            bot.send_message(chat_id=id, text="Отправьте своё местоположение\n"
+                                              "или укажите адрес в ручную",
+                             reply_markup=order_accepting(case="address", chat_id=id))
+        if operation == "restaurant":
+            dict_users[id]["Оформление"].append("Заведение")
+            bot.send_message(chat_id=id, text="Отправьте своё местоположение\n"
+                                              "или укажите адрес в ручную",
+                             reply_markup=order_accepting(case="address", chat_id=id))
+        if operation == "geo":
+            bot.send_message(chat_id=id, text="Отправьте Геолокацию",
+                             reply_markup=order_accepting(case="Geolocation", chat_id=id))
+
+        # if operation == "Вручную":
 
 
 print("Telegram started successfully")
