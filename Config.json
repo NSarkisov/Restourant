@@ -3,6 +3,7 @@
     "vk_token": {"group_token":"vk1.a.6FsEU6NZYeIM0Hud7B7H8KbIs4NCPe3za7hi4eyomlfDH-WMcQcq-2mhgOn_UPIFvFfn7PQjeSoz0b_9MbLrC7GMduST8NwdqLO8yjKHaB1vT3lXreYjRAxo8Q2aQqT3FvEgDFgzyl9nyakEb3QdjSu34sqaeXhzaSXFPmPvnPvQKo03VBRw1FdrJhMI3r85AjXtI5DKOIGW5qptdRzHvg",
     "group_id": " 222556674 ",
     "api_version" : "5.120"},
-    "database_path": "restaurant.db"
+    "database_path": "restaurant.db",
+    "geocoder_api": "acb5559a-b528-4544-a005-03647e92e708"
   } 
   

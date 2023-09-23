@@ -13,10 +13,17 @@ with open("Config.json") as f:
     config = json.load(f)
     Token = config.get("telegram_token")
     database = config.get("database_path")
-geocoder_api = "acb5559a-b528-4544-a005-03647e92e708"
+    geocoder_api = config.get("geocoder_api")
 bot = telebot.TeleBot(Token)
 con = sl.connect(database, check_same_thread=False)
 dict_users = {}
+with con:
+    menu = con.execute("SELECT Название FROM 'Разделы Меню'")
+    menu_categories = []
+    for categories in menu.fetchall():
+        menu_categories.append(categories[0])
+    dict_users["Категории Меню"] = menu_categories
+print(dict_users)
 
 
 def category(user_id):
