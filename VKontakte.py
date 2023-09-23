@@ -119,8 +119,7 @@ def products(obj):
         groups.append(lst[step:step + 2])  #[[[],[]], [[],[]],...]
         step += 2
     user[obj.user_id].update({"groups": groups})    
-    print(groups)  
-    print(user)       
+        
     grouping(groups, obj, count =0)  
     
 def card_product(el):   #Информация карточки
@@ -142,6 +141,7 @@ def card_product(el):   #Информация карточки
            
 def grouping(data, obj, count):
     for el in data[count]:
+        print(f' элемент карточки{el}')
         caption, attachment =card_product(el)
         case = 0
         if el == data[count][-1]:   #[[],[]], здесь data[count] это группа из 2 эл
@@ -191,53 +191,60 @@ def collect_bag(case, user_id, count):
         keyboard.add_callback_button(label='Оформить заказ', color=VkKeyboardColor.PRIMARY,
                                     payload={"type": "корзина", "name": "Подтвердить"})   
     if case == 'change':
-        if "new_bag" not in user[user_id].keys() or user[user_id]["new_bag"] is None:
+        if "new_bag" not in user[user_id].keys():
             user[user_id]["new_bag"] = user[user_id]["bag"]
-
-        #for el in user[user_id]["new_bag"]:
-            # name = el[0]
-            # cost = el[1] * el[2]
-            # amount = el[1]
-            # index = user[user_id]["new_bag"].index(el)
-        for i in range(math.ceil(len(user[user_id]["new_bag"]) / 5)):
-            keyboard.append(VkKeyboard(**settings2))
-            for x in user[user_id]["new_bag"][step:step+5]:
-                if x != '':
-                    name = x[0]
-                    cost = x[1] * x[2]
-                    amount = x[1]
-                    index = user[user_id]["new_bag"].index(x)
-                    keyboard.add_callback_button(label='-', color=VkKeyboardColor.PRIMARY,
-                            payload={"type": "корзина", "name": "<<", "data":index})
-                    keyboard[i].add_callback_button(label=f"{name}, {index + 1}: {amount} - {cost} BYN", color=VkKeyboardColor.SECONDARY, payload={"type": "position", "name": x})
-                    keyboard.add_callback_button(label='+', color=VkKeyboardColor.PRIMARY,
-                                payload={"type": "корзина", "name": ">>", "data":index})
-                    keyboard.add_callback_button(label= 'X', color=VkKeyboardColor.PRIMARY,
-                                            payload={"type": "корзина", "name": "del", "data": index})
-                    keyboard[i].add_line()
-            step += 5
-            is_slider(keyboard)
-            # keyboard.add_callback_button(label='-', color=VkKeyboardColor.PRIMARY,
-            #                     payload={"type": "корзина", "name": "<<", "data":index})
-            # keyboard.add_callback_button(label=f"{name}, {index + 1}: {amount} - {cost} BYN", color=VkKeyboardColor.PRIMARY,
-            #                     payload={"type": "корзина", "name": "*"})
-            # keyboard.add_callback_button(label='+', color=VkKeyboardColor.PRIMARY,
-            #                         payload={"type": "корзина", "name": ">>", "data":index})
-            # keyboard.add_callback_button(label= 'X', color=VkKeyboardColor.PRIMARY,
-            #                         payload={"type": "корзина", "name": "del", "data": index})
-           
-            if el is user[user_id]["new_bag"][-1]:
-                keyboard.add_line()
+        print(user[user_id]["new_bag"])
+        for el in user[user_id]["new_bag"][count]:
+            print(el)
+            name = el[0]
+            cost = el[1] * el[2]
+            amount = el[1]
+            index = user[user_id]["new_bag"][count].index(el)
+       
+        # for i in range(math.ceil(len(user[user_id]["new_bag"]) / 5)):
+        #     keyboard.append(VkKeyboard(**settings2))
+        #     for x in user[user_id]["new_bag"][step:step+5]:
+        #         if x != '':
+        #             name = x[0]
+        #             cost = x[1] * x[2]
+        #             amount = x[1]
+        #             index = user[user_id]["new_bag"].index(x)
+        #             keyboard.add_callback_button(label='-', color=VkKeyboardColor.PRIMARY,
+        #                     payload={"type": "корзина", "name": "<<", "data":index})
+        #             keyboard[i].add_callback_button(label=f"{name}, {index + 1}: {amount} - {cost} BYN", color=VkKeyboardColor.SECONDARY, payload={"type": "position", "name": x})
+        #             keyboard.add_callback_button(label='+', color=VkKeyboardColor.PRIMARY,
+        #                         payload={"type": "корзина", "name": ">>", "data":index})
+        #             keyboard.add_callback_button(label= 'X', color=VkKeyboardColor.PRIMARY,
+        #                                     payload={"type": "корзина", "name": "del", "data": index})
+        #             keyboard[i].add_line()
+        #     step += 5
+        #     is_slider(keyboard)
+            keyboard.add_line()
+            keyboard.add_callback_button(label='-', color=VkKeyboardColor.PRIMARY,
+                                payload={"type": "корзина", "name": "<<", "data":index})
+            keyboard.add_callback_button(label=f"{name}, {index + 1}: {amount} - {cost} BYN", color=VkKeyboardColor.PRIMARY,
+                                payload={"type": "корзина", "name": "*"})
+            keyboard.add_callback_button(label='+', color=VkKeyboardColor.PRIMARY,
+                                   payload={"type": "корзина", "name": ">>", "data":index})
+            keyboard.add_callback_button(label= 'X', color=VkKeyboardColor.PRIMARY,
+                                   payload={"type": "корзина", "name": "del", "data": index})
+            keyboard.add_line()
+            
+            if el is user[user_id]["new_bag"][count][-1]:
+               
                 keyboard.add_callback_button(label='Изменить', color=VkKeyboardColor.PRIMARY,
                                 payload={"type": "корзина", "name": "change"})
+                keyboard.add_callback_button(label='Следующие', color=VkKeyboardColor.PRIMARY,
+                                    payload={"type": "карточка", "name": "Следующие",  "data":data })
+            
                 keyboard.add_callback_button(label= 'Назад', color=VkKeyboardColor.PRIMARY,
                                     payload={"type": "корзина", "name": "Назад"})
                 
-        if len(user[user_id]["new_bag"]) == 0:
-            keyboard.add_callback_button(label= 'Назад', color=VkKeyboardColor.PRIMARY,
-                                    payload={"type": "корзина", "name": "Назад"})
-            keyboard.add_callback_button(label='Подтвердить', color=VkKeyboardColor.PRIMARY,
-                                    payload={"type": "корзина", "name": "Подтвердить"})
+        # if len(user[user_id]["new_bag"][count]) == 0:
+        #     keyboard.add_callback_button(label= 'Назад', color=VkKeyboardColor.PRIMARY,
+        #                             payload={"type": "корзина", "name": "Назад"})
+        #     keyboard.add_callback_button(label='Подтвердить', color=VkKeyboardColor.PRIMARY,
+        #                             payload={"type": "корзина", "name": "Подтвердить"})
         
     return keyboard
 
@@ -257,24 +264,59 @@ def save_phone_number(phone_number):
     with con:
     # Вставка номера телефона в бд
         con.execute('UPDATE OR IGNORE Пользователи SET Телефон = ? WHERE "ID Vk" = ?', [phone_number, user_id])
-    
+def check_info(user_id):
+    text = "Ваш заказ:\n"
+    num = 1
+    result = 0
+    for el in user[user_id]['bag']:
+        cost = el[1] * el[2]
+        text += f"{num}. {el[0]}, кол-во: {el[1]} сумма: {cost} BYN\n"
+        num += 1
+        result += cost
+
+    if 'checkout' in user[user_id].keys():
+        text += "\n"
+        for inf in user[user_id]['checkout'].items():
+            text += inf[0] + " : " + inf[1] + "\n"
+        text += "\n"
+    text += f"Итого: {result} BYN"
+    return text
         
 print("Ready")
 
 for event in longpoll.listen():
-    if event.type == VkBotEventType.MESSAGE_NEW: #and event.to_me:
-        # text = event.text
-        # if re.match(r'^\+?\d{10,12}$', text):
-        #     # Сохранение номера телефона в базе данных
-        #     save_phone_number(text)
-        #     keyboard = checkout(event.obj.message['from_id'])
-        #     vk.messages.send(
-        #         user_id=event.obj.message['from_id'],
-        #         random_id=get_random_id(),
-        #         peer_id=event.obj.message['peer_id'],
-        #         message='Номер телефона успешно сохранен!',
-        #         keyboard = keyboard.get_keyboard())
+    if event.type == VkBotEventType.MESSAGE_NEW:
+        
+        # if 'checkout' in user[event.obj.message['from_id']].keys():
+        #     text = ''
+        #     if user[event.obj.message['from_id']]['checkout']['delivery method'] == "Доставка":
+        #         if "Улица" not in user[event.obj.message['from_id']]['checkout'].keys():
+        #             user[event.obj.message['from_id']]['checkout'].update({"Улица": event.obj.message['text']})
+        #             text = "Укажите номер дома"
+        #         elif "Дом" not in user[event.obj.message['from_id']]['checkout'].keys():
+        #             user[event.obj.message['from_id']]['checkout'].update({"Дом": event.obj.message['text']})
+        #             text = "Укажите номер квартиры"
+        #         elif "Квартира" not in user[event.obj.message['from_id']]['checkout'].keys():
+        #             user[event.obj.message['from_id']]['checkout'].update({"Квартира": event.obj.message['text']})
+        #             text = "Укажите номер Телефона"
+        #         elif "Телефон" not in user[event.obj.message['from_id']]['checkout'].keys():
+        #             user[event.obj.message['from_id']]['checkout'].update({"Телефон": event.obj.message['text']})
+        #             text = check_info(event.obj.message['from_id'])
+        #             print(text)
+        # elif user[event.obj.message['from_id']]['checkout']['delivery method'] == "Самовывоз":
+        #     user[event.obj.message['from_id']]['checkout'].update({"Телефон": event.obj.message['text']})
 
+
+        # elif user[event.obj.message['from_id']]['checkout']['delivery method'] == "В заведении":
+        #     if "Номер стола" not in user[event.obj.message['from_id']]['checkout'].keys():
+        #         user[event.obj.message['from_id']]['checkout'].update({"Номер стола": event.obj.message['text']})
+        #         text = "Укажите номер телефона"
+        #     elif "Телефон" not in user[event.obj.message['from_id']]['checkout'].keys():
+        #         user[event.obj.message['from_id']]['checkout'].update({"Телефон": event.obj.message['text']})
+
+        # if text != "":
+        #     bot.send_message(chat_id=user_id, text=text)           
+        
         if event.obj.message['text'] != '':
             #записываем информацию о пользовавтеле в БД
             user_id = event.obj.message['from_id']
@@ -292,7 +334,12 @@ for event in longpoll.listen():
             # если аватарка есть, добавляем ее в табл    
                 with con:
                     con.execute('UPDATE OR IGNORE Пользователи SET Аватарка = ? WHERE "ID Vk" = ?', [sqlite3.Binary(avatar_data), user_id])
-            
+            # vk.messages.send(
+            #             user_id=event.obj.message['from_id'],
+            #             random_id=get_random_id(),
+            #             peer_id=event.obj.message['peer_id'],
+            #             message=text)
+                    
             if event.from_user:
                 if event.obj.message['text'] == 'Начать':
                     key_board = reply_menu(event.obj.message['text'])
@@ -435,7 +482,7 @@ for event in longpoll.listen():
                     peer_id=event.obj.peer_id,
                     message= f'Товар, {name}: {count} шт. на сумму: {count * cost} BYN, успешно добавлен в корзину!')
             if name == 'Корзина':
-                if  'bag' not in user[event.object.user_id].keys() or user[event.object.user_id]['bag'] is None:
+                if  'bag' not in user[event.object.user_id].keys():
                     vk.messages.send(
                         user_id=event.obj.user_id,
                         random_id=get_random_id(),
@@ -443,21 +490,22 @@ for event in longpoll.listen():
                         message= f'{user_name}, к сожалению корзина пуста. Добавьте позицию!')
                 else:
                     print(user[event.object.user_id]['bag'])
-                    text = "Выбранные позиции меню:\n"
-                    num = 1
-                    result = 0
-                    for el in user[event.object.user_id]['bag']:
-                        cost = el[1]* el[2]
-                        text += f"{num}. {el[0]}, кол-во: {el[1]} сумма: {cost} BYN\n"
-                        num += 1
-                        result += cost
-                    text += f"Итого: {result} BYN"
+                    text = check_info(event.object.user_id)
+                    # "Выбранные позиции меню:\n"
+                    # num = 1
+                    # result = 0
+                    # for el in user[event.object.user_id]['bag']:
+                    #     cost = el[1]* el[2]
+                    #     text += f"{num}. {el[0]}, кол-во: {el[1]} сумма: {cost} BYN\n"
+                    #     num += 1
+                    #     result += cost
+                    # text += f"Итого: {result} BYN"
                     vk.messages.send(
                             user_id=event.obj.user_id,
                             random_id=get_random_id(),
                             peer_id=event.obj.peer_id,
                             message= text,
-                            keyboard = collect_bag(case="views", user_id=event.obj.user_id).get_keyboard())  
+                            keyboard = collect_bag(case="views", user_id=event.obj.user_id, count = 0).get_keyboard())  
         
         elif event.object.payload.get('type') == "корзина":  
             name = event.object.payload.get('name')
@@ -471,7 +519,7 @@ for event in longpoll.listen():
                     message= f'Способ получения заказа',
                     keyboard = checkout(user_id=event.obj.user_id).get_keyboard())
             if name == 'Изменить':
-              
+                count +=1
                 print(user[event.object.user_id]['bag'])
                 text = "Выбранные позиции меню:\n"
                 num = 1
@@ -484,17 +532,18 @@ for event in longpoll.listen():
                 text += f"Итого: {result} BYN"
                 step = 0
                 check_lst = []
-                if "new_bag" not in user[user_id].keys() or user[user_id]["new_bag"] is None:
-                    user[user_id]["new_bag"] = user[user_id]["bag"]
-                    for i in range(math.ceil(len(user[user_id]["new_bag"]) / 5)):
-                        check_lst.append(user[user_id]["new_bag"][step:step + 5])
-                        step += 5
-                    user[user_id]['new_bag'] = check_lst                          
-                vk.messages.edit(
-                    peer_id=event.obj.peer_id,
-                    message= text,
-                    conversation_message_id=event.obj.conversation_message_id,
-                    keyboard = collect_bag(case="change", user_id=event.obj.user_id, count = 0).get_keyboard())
+                if "new_bag" not in user[event.object.user_id].keys() or user[event.object.user_id]["new_bag"] is None:
+                    user[event.object.user_id]["new_bag"] = user[event.object.user_id]["bag"]
+                    for i in range(math.ceil(len(user[event.object.user_id]["new_bag"]) / 2)):
+                        check_lst.append(user[event.object.user_id]["new_bag"][step:step + 2])
+                        step += 2
+                    user[event.object.user_id]['new_bag'] = check_lst 
+                    print(f'это чеклист {check_lst}')                         
+                    vk.messages.edit(
+                        peer_id=event.obj.peer_id,
+                        message= text,
+                        conversation_message_id=event.obj.conversation_message_id,
+                        keyboard = collect_bag(case="change", user_id=event.obj.user_id, count = 0).get_keyboard())
                     
             if name == '<<':
                 amount = user[event.object.user_id]["new_bag"][index][1]
@@ -567,19 +616,28 @@ for event in longpoll.listen():
                             text += f"{num}. {el[0]}, кол-во: {el[1]} сумма: {cost} BYN\n"
                             num += 1
                             result += cost
-                        text += f"Итого: {result}.BYN"
+                        text += f"Итого: {result} BYN"
                         vk.messages.edit(
                             peer_id=event.obj.peer_id,
                             message= text,
                             conversation_message_id=event.obj.conversation_message_id,
                             keyboard = collect_bag(case="views", user_id=event.obj.user_id).get_keyboard())
-        elif event.object.payload.get('type') == "оформить заказ":    
-            if name == "Самовывоз":
-                vk.messages.send(
-                    user_id=event.obj.user_id,
-                    random_id=get_random_id(),
-                    peer_id=event.obj.peer_id,
-                    message= f'Введите номер телефона:')              
+        elif event.object.payload.get('type') == "оформить заказ":   
+            name = event.object.payload.get('name') 
+            if 'checkout' not in user[event.object.user_id].keys():
+                if name == "Доставка":
+                    user[event.object.user_id]['checkout'] = {'delivery method': "Доставка"}
+                elif name == "Самовывоз":
+                    user[event.object.user_id]['checkout'] = {'delivery method': "Самовывоз"}
+                elif name == "В заведении":
+                    user[event.object.user_id]['checkout'] = {'delivery method': "В заведении"}
+                vk.messages.edit(
+                        peer_id=event.obj.peer_id,
+                        message= 'Выберите способ оплаты',
+                        conversation_message_id=event.obj.conversation_message_id,
+                        keyboard = collect_bag(case="change", user_id=event.obj.user_id, count = 0).get_keyboard())
+              
+                  
 
                 
                
