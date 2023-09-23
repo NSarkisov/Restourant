@@ -5,6 +5,7 @@ import sqlite3 as sl
 import telebot
 from io import BytesIO
 from PIL import Image
+from datetime import datetime
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from telebot.types import ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
 
@@ -204,12 +205,43 @@ def order_info(user_id):
         total += cost
 
     if "Оформление" in dict_users[user_id].keys():
-        text += "\n"
+        with con:
+            number = con.execute(f'SELECT Заказы.ID FROM Заказы INNER JOIN Пользователи '
+                                 f'ON Заказы.[ID Пользователя] = Пользователи.ID '
+                                 f'WHERE Пользователи.[ID TG] = {user_id} ORDER BY Заказы.ID DESC LIMIT 1;')
+        number = number.fetchall()[0][0]
+
+        text += f"\nНомер вашего заказа: {number}\n"
+
         for information in dict_users[user_id]["Оформление"].items():
             text += information[0] + " : " + information[1] + "\n"
         text += "\n"
+        if dict_users[user_id]["Оформление"]["Способ Доставки"] == "Доставка":
+            text += "Доставка в течении: 30 ± 5 минут\n"
+
     text += f"Итого: {total} BYN"
     return text
+
+
+def order_to_base(user_id):
+    telephone = dict_users[user_id]["Оформление"]["Телефон"]
+    address = None
+    if dict_users[user_id]["Оформление"]["Способ Доставки"] == "Доставка":
+        street = dict_users[user_id]["Оформление"]["Улица"]
+        house = dict_users[user_id]["Оформление"]["Дом"]
+        apartment = dict_users[user_id]["Оформление"]["Квартира"]
+        address = street + ", " + house + ", " + apartment
+    cost = sum(x[1]*x[2] for x in dict_users[user_id]["Корзина"])
+    payment = dict_users[user_id]["Оформление"]["Способ Оплаты"]
+    delivery = dict_users[user_id]["Оформление"]["Способ Доставки"]
+    current_date_time = datetime.now().replace(microsecond=0)
+    with con:
+        con.execute(f'UPDATE OR IGNORE Пользователи set Телефон = (?)'
+                    f'WHERE [ID TG] = {user_id}', [telephone])
+        con.execute(f'INSERT OR IGNORE INTO Заказы ("ID Пользователя", Время, Адресс, Стоимость, Оплата, Доставка) '
+                    f'values ((SELECT ID FROM Пользователи WHERE [ID TG] = {user_id}),'
+                    f'("{current_date_time}"),?,?,?,?)',
+                    [address, cost, payment, delivery])
 
 
 @bot.message_handler(content_types=['location'])
@@ -240,12 +272,12 @@ def location(geodata):
 def start(message):
 
     user_id = message.from_user.id
+    name = message.from_user.first_name
 
     if message.text == '/start':
 
-        bot.send_message(message.chat.id, f"Привет {message.from_user.first_name}!\nМы рады приветствовать вас")
-
-        name = message.from_user.first_name
+        bot.send_message(message.chat.id, f"Привет {message.from_user.first_name}!\n"
+                                          f"Мы рады приветствовать вас")
 
         with con:
             con.execute('INSERT OR IGNORE INTO Пользователи (Имя, "ID TG") values (?, ?)', [name, user_id])
@@ -261,15 +293,15 @@ def start(message):
             if response.status_code == 200:
                 avatar = response.content
                 with con:
-                    con.execute(f'UPDATE OR IGNORE Пользователи SET Аватарка = ?'
-                                f' where Имя = "{name}" and "ID TG" = {user_id}', [sl.Binary(avatar)])
+                    con.execute(f'UPDATE OR IGNORE Пользователи SET Аватарка = ? '
+                                f'WHERE Имя = "{name}" AND "ID TG" = {user_id}', [sl.Binary(avatar)])
 
         bot.send_message(message.chat.id,
                          'Выберите категорию в Меню ⬇️', reply_markup=category(user_id))
 
     if "Оформление" in dict_users[user_id].keys():
         text = ""
-
+        finished_order = False
         if dict_users[user_id]["Оформление"]["Способ Доставки"] == "Доставка":
             if "Улица" not in dict_users[user_id]["Оформление"].keys():
                 dict_users[user_id]["Оформление"].update({"Улица": message.text})
@@ -280,13 +312,18 @@ def start(message):
             elif "Квартира" not in dict_users[user_id]["Оформление"].keys():
                 dict_users[user_id]["Оформление"].update({"Квартира": message.text})
                 text = "Укажите номер Телефона"
+                print(dict_users[user_id])
             elif "Телефон" not in dict_users[user_id]["Оформление"].keys():
                 dict_users[user_id]["Оформление"].update({"Телефон": message.text})
+                order_to_base(user_id)
                 text = order_info(user_id)
-                print(text)
+                finished_order = True
+
         elif dict_users[user_id]["Оформление"]["Способ Доставки"] == "Самовывоз":
             dict_users[user_id]["Оформление"].update({"Телефон": message.text})
-
+            order_to_base(user_id)
+            text = order_info(user_id)
+            finished_order = True
 
         elif dict_users[user_id]["Оформление"]["Способ Доставки"] == "В заведении":
             if "Номер стола" not in dict_users[user_id]["Оформление"].keys():
@@ -294,9 +331,14 @@ def start(message):
                 text = "Укажите номер телефона"
             elif "Телефон" not in dict_users[user_id]["Оформление"].keys():
                 dict_users[user_id]["Оформление"].update({"Телефон": message.text})
+                order_to_base(user_id)
+                text = order_info(user_id)
+                finished_order = True
 
         if text != "":
             bot.send_message(chat_id=user_id, text=text)
+        if finished_order:
+            del dict_users[user_id]["Оформление"], dict_users[user_id]["Корзина"]
 
 
 @bot.callback_query_handler(func=lambda call: True)
