@@ -184,7 +184,7 @@ def collect_bag(case, user_id):
         keyboard1.add_callback_button(label='Меню', color=VkKeyboardColor.PRIMARY,
                                     payload={"type": "text", "name": "Меню"})
         keyboard1.add_callback_button(label='Оформить заказ', color=VkKeyboardColor.PRIMARY,
-                                    payload={"type": "корзина", "name": "Подтвердить"})   
+                                    payload={"type": "корзина", "name": "Оформить заказ"})   
         return keyboard1
     
     global keyboard
@@ -215,22 +215,48 @@ def collect_bag(case, user_id):
             
     is_slider(keyboard, 'change')
         
-def checkout(user_id):
+def checkout(case, user_id):
     keyboard = VkKeyboard(**settings2)   
-    keyboard.add_callback_button(label='Доставка', color=VkKeyboardColor.PRIMARY,
+    keyboardPayment = VkKeyboard(**settings2)  
+    keyboardAddress = VkKeyboard(**settings2) 
+    
+    if case == "delivery":
+        keyboard.add_callback_button(label='Доставка', color=VkKeyboardColor.PRIMARY,
                                     payload={"type": "оформить заказ", "name": "Доставка"})
-    keyboard.add_callback_button(label='Самовывоз', color=VkKeyboardColor.PRIMARY,
+        keyboard.add_callback_button(label='Самовывоз', color=VkKeyboardColor.PRIMARY,
                                     payload={"type": "оформить заказ", "name": "Самовывоз"})
-    keyboard.add_callback_button(label='Карта', color=VkKeyboardColor.PRIMARY,
-                                    payload={"type": "оформить заказ", "name": "Карта"})
-    keyboard.add_callback_button(label='Наличные', color=VkKeyboardColor.PRIMARY,
-                                    payload={"type": "оформить заказ", "name": "Наличные"})
-    return keyboard
+        keyboard.add_callback_button(label='В заведении', color=VkKeyboardColor.PRIMARY,
+                                    payload={"type": "оформить заказ", "name": "Заведение"})
+        return keyboard
 
-def save_phone_number(phone_number):
+    if case == "payment":
+        print('payment прилетел')
+        keyboardPayment.add_callback_button(label='Карта', color=VkKeyboardColor.PRIMARY,
+                                    payload={"type": "оформить заказ", "name": "Карта"})
+        keyboardPayment.add_callback_button(label='Наличные', color=VkKeyboardColor.PRIMARY,
+                                    payload={"type": "оформить заказ", "name": "Наличные"})
+        return keyboardPayment
+     
+    if case == "address":
+        print('address прилетел')
+        keyboardAddress.add_callback_button(label='Адрес', color=VkKeyboardColor.PRIMARY,
+                                    payload={"type": "оформить заказ", "name": "Адрес"})
+        # keyboardAddress.add_callback_button(label='Дом', color=VkKeyboardColor.PRIMARY,
+        #                             payload={"type": "оформить заказ", "name": "Дом"})
+        # keyboardAddress.add_callback_button(label='Квартира', color=VkKeyboardColor.PRIMARY,
+        #                             payload={"type": "оформить заказ", "name": "Квартира"})
+        return keyboardAddress
+    
+    if case == "end":
+        return None
+    
+    
+    
+
+def save_checklist(user_id):
     with con:
     # Вставка номера телефона в бд
-        con.execute('UPDATE OR IGNORE Пользователи SET Телефон = ? WHERE "ID Vk" = ?', [phone_number, user_id])
+        con.execute('UPDATE OR IGNORE Пользователи SET Телефон = ? WHERE "ID Vk" = ?', [ user_id])
         
 def check_info(user_id):
     text = "Ваш заказ:\n"
@@ -254,34 +280,6 @@ print("Ready")
 
 for event in longpoll.listen():
     if event.type == VkBotEventType.MESSAGE_NEW:
-        
-        if 'checkout' in user[event.obj.message['from_id']].keys():
-            text = ''
-            if user[event.obj.message['from_id']]['checkout']['delivery method'] == "Доставка":
-                if "Улица" not in user[event.obj.message['from_id']]['checkout'].keys():
-                    user[event.obj.message['from_id']]['checkout'].update({"Улица": event.obj.message['text']})
-                    text = "Укажите номер дома"
-                elif "Дом" not in user[event.obj.message['from_id']]['checkout'].keys():
-                    user[event.obj.message['from_id']]['checkout'].update({"Дом": event.obj.message['text']})
-                    text = "Укажите номер квартиры"
-                elif "Квартира" not in user[event.obj.message['from_id']]['checkout'].keys():
-                    user[event.obj.message['from_id']]['checkout'].update({"Квартира": event.obj.message['text']})
-                    text = "Укажите номер Телефона"
-                elif "Телефон" not in user[event.obj.message['from_id']]['checkout'].keys():
-                    user[event.obj.message['from_id']]['checkout'].update({"Телефон": event.obj.message['text']})
-                    text = check_info(event.obj.message['from_id'])
-                    print(text)
-        elif user[event.obj.message['from_id']]['checkout']['delivery method'] == "Самовывоз":
-            user[event.obj.message['from_id']]['checkout'].update({"Телефон": event.obj.message['text']})
-
-
-        elif user[event.obj.message['from_id']]['checkout']['delivery method'] == "В заведении":
-            if "Номер стола" not in user[event.obj.message['from_id']]['checkout'].keys():
-                user[event.obj.message['from_id']]['checkout'].update({"Номер стола": event.obj.message['text']})
-                text = "Укажите номер телефона"
-            elif "Телефон" not in user[event.obj.message['from_id']]['checkout'].keys():
-                user[event.obj.message['from_id']]['checkout'].update({"Телефон": event.obj.message['text']})         
-        
         if event.obj.message['text'] != '':
             #записываем информацию о пользовавтеле в БД
             user_id = event.obj.message['from_id']
@@ -299,11 +297,45 @@ for event in longpoll.listen():
             # если аватарка есть, добавляем ее в табл    
                 with con:
                     con.execute('UPDATE OR IGNORE Пользователи SET Аватарка = ? WHERE "ID Vk" = ?', [sqlite3.Binary(avatar_data), user_id])
-            # vk.messages.send(
-            #             user_id=event.obj.message['from_id'],
-            #             random_id=get_random_id(),
-            #             peer_id=event.obj.message['peer_id'],
-            #             message=text)
+            try:
+                if event.obj.message['from_id'] in user.keys() and 'checkout' in user[event.obj.message['from_id']].keys():
+                    text = ''
+                    print('Hello world')
+                    if user[event.obj.message['from_id']]['checkout']['delivery method'] == "Доставка":
+                        if "street" not in user[event.obj.message['from_id']]['checkout'].keys():
+                            user[event.obj.message['from_id']]['checkout'].update({"street": event.obj.message['text']})
+                            text = "Укажите номер дома"
+                            print('Hello world house')
+                        elif "house" not in user[event.obj.message['from_id']]['checkout'].keys():
+                            user[event.obj.message['from_id']]['checkout'].update({"house": event.obj.message['text']})
+                            text = "Укажите номер квартиры"
+                        elif "flat" not in user[event.obj.message['from_id']]['checkout'].keys():
+                            user[event.obj.message['from_id']]['checkout'].update({"flat": event.obj.message['text']})
+                            text = "Укажите номер Телефона"
+                        elif "phone" not in user[event.obj.message['from_id']]['checkout'].keys():
+                            user[event.obj.message['from_id']]['checkout'].update({"phone": event.obj.message['text']})
+                            #save_checklist(event.obj.message['from_id'])
+                            text = check_info(event.obj.message['from_id'])
+                        print(text)
+                elif user[event.obj.message['from_id']]['checkout']['delivery method'] == "Самовывоз":
+                    user[event.obj.message['from_id']]['checkout'].update({"phone": event.obj.message['text']})
+
+
+                elif user[event.obj.message['from_id']]['checkout']['delivery method'] == "В заведении":
+                    if "place" not in user[event.obj.message['from_id']]['checkout'].keys():
+                        user[event.obj.message['from_id']]['checkout'].update({"place": event.obj.message['text']})
+                        text = "Укажите номер телефона"
+                    elif "Телефон" not in user[event.obj.message['from_id']]['checkout'].keys():
+                        user[event.obj.message['from_id']]['checkout'].update({"phone": event.obj.message['text']}) 
+                print(user[event.obj.message['from_id']]['checkout'])      
+                if text != "":
+                    vk.messages.send(
+                        user_id=event.obj.message['from_id'],
+                        random_id=get_random_id(),
+                        peer_id=event.obj.message['peer_id'],
+                        message=text)
+            except:
+                pass
                     
             if event.from_user:
                 if event.obj.message['text'] == 'Начать':
@@ -450,13 +482,14 @@ for event in longpoll.listen():
         elif event.object.payload.get('type') == "корзина":  
             name = event.object.payload.get('name')
             data = event.object.payload.get('data')    
-            if name == 'Подтвердить':
+            if name == 'Оформить заказ':
+                keyboard = checkout(case = "delivery", user_id=event.obj.user_id)
                 vk.messages.send(
                     user_id=event.obj.user_id,
                     random_id=get_random_id(),
                     peer_id=event.obj.peer_id,
                     message= f'Способ получения заказа',
-                    keyboard = checkout(user_id=event.obj.user_id).get_keyboard())
+                    keyboard = keyboard.get_keyboard())
             if name == 'Изменить':
                 text = check_info(event.object.user_id)
                 collect_bag(case="change", user_id=event.obj.user_id)                         
@@ -509,8 +542,6 @@ for event in longpoll.listen():
                     message= text,
                     conversation_message_id=event.obj.conversation_message_id,
                     keyboard = collect_bag(case="views", user_id=event.obj.user_id).get_keyboard())
-                
-                
             if name == "change":
                 if len(user[event.object.user_id]["new_bag"]) == 0:
                     del user[event.object.user_id]["new_bag"]
@@ -554,18 +585,65 @@ for event in longpoll.listen():
                             keyboard = collect_bag(case="views", user_id=event.obj.user_id).get_keyboard())
         elif event.object.payload.get('type') == "оформить заказ":   
             name = event.object.payload.get('name') 
+            case, text = "", ""
             if 'checkout' not in user[event.object.user_id].keys():
                 if name == "Доставка":
                     user[event.object.user_id]['checkout'] = {'delivery method': "Доставка"}
                 elif name == "Самовывоз":
                     user[event.object.user_id]['checkout'] = {'delivery method': "Самовывоз"}
-                elif name == "В заведении":
+                elif name == "Заведении":
                     user[event.object.user_id]['checkout'] = {'delivery method': "В заведении"}
                 vk.messages.edit(
                         peer_id=event.obj.peer_id,
                         message= 'Выберите способ оплаты',
                         conversation_message_id=event.obj.conversation_message_id,
-                        keyboard = collect_bag(case="change", user_id=event.obj.user_id, count = 0).get_keyboard())
+                        keyboard = checkout(case="payment", user_id=event.obj.user_id).get_keyboard())
+            if name == "Карта": 
+                print('клава карта / наличные прилетел')
+                user[event.obj.user_id]['checkout'].update({"payment": "Карта"})
+                vk.messages.edit(
+                        peer_id=event.obj.peer_id,
+                        message= 'Введите адрес доставки!',
+                        conversation_message_id=event.obj.conversation_message_id,
+                        keyboard = checkout(case="address", user_id=event.obj.user_id).get_keyboard())
+                print(user[event.obj.user_id]['checkout'])
+            elif name == "Наличные":    
+                user[event.obj.user_id]['checkout'].update({"payment": "Наличные"})
+                vk.messages.edit(
+                        peer_id=event.obj.peer_id,
+                        message= 'Введите адрес доставки!',
+                        conversation_message_id=event.obj.conversation_message_id,
+                        keyboard = checkout(case="address", user_id=event.obj.user_id).get_keyboard())
+                print(user[event.obj.user_id]['checkout'])
+            if name == "Адрес":
+                print('клава адрес прилетел')
+                if user[event.obj.user_id]['checkout']['delivery method'] == "Доставка":
+                    if "street" not in user[event.obj.user_id]['checkout'].keys():
+                        vk.messages.edit(
+                            peer_id=event.obj.peer_id,
+                            message= "Укажите улицу:",
+                            conversation_message_id=event.obj.conversation_message_id)
+                        print(user[event.obj.user_id]['checkout'])                   
+                
+                elif user[event.obj.user_id]['checkout']['delivery method'] == "Самовывоз":
+                    vk.messages.edit(
+                        peer_id=event.obj.peer_id,
+                        message= "Укажите номер телефона:",
+                        conversation_message_id=event.obj.conversation_message_id)
+                    
+                elif user[event.obj.user_id]['checkout']['delivery method'] == "В заведении":
+                    vk.messages.edit(
+                        peer_id=event.obj.peer_id,
+                        message= "Укажите номер столика:",
+                        conversation_message_id=event.obj.conversation_message_id)
+                    
+                # keyboard = checkout(case=case, user_id=event.obj.user_id)
+                # vk.messages.edit(
+                #         peer_id=event.obj.peer_id,
+                #         message= text,
+                #         conversation_message_id=event.obj.conversation_message_id,
+                #         keyboard = keyboard.get_keyboard())
+            
               
                   
 
