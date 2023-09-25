@@ -22,23 +22,60 @@ dict_users = {}
 dict_administrators = {}
 with con:
     administrators = con.execute("SELECT * FROM Администраторы")
-    print(administrators.fetchall())
-
+    # (1, 'Никита', 'Саркисов', '+375256910740', '25.09.2022', None, 1, 687986481)
+    for information in administrators.fetchall():
+        dict_administrators.update(
+            {information[7]: {"Имя": information[1], "Фамилия": information[2], "Телефон": information[3],
+                              "Начало Работы": information[4], "Окончание Работы": information[5],
+                              "Уровень доступа": information[6]}})
     menu = con.execute("SELECT Название FROM 'Разделы Меню'")
     menu_categories = []
     for categories in menu.fetchall():
         menu_categories.append(categories[0])
     dict_users["Категории Меню"] = menu_categories
-    del menu_categories, menu, categories, f
+    del menu_categories, menu, categories, administrators, f
 
 
-def category(case):
+# {687986481: {'Имя': 'Никита', 'Фамилия': 'Саркисов', 'Телефон': '+375256910740', 'Начало Работы': '25.09.2022',
+# 'Окончание Работы': None, 'Уровень доступа': 1}}
+def admin_panel(case, user_id):
+    if case == "Панель Администраторов":
+        panel = InlineKeyboardMarkup()
+        orders = InlineKeyboardButton("📋Заказы", callback_data=json.dumps([0, "orders"]))
+        menu_settings = InlineKeyboardButton("🧁Изменения в меню", callback_data=json.dumps([0, "menu_settings"]))
+        admin_settings = InlineKeyboardButton("⚙️Настройка администраторов", callback_data=json.dumps([0, "admin"]))
+        statistics = InlineKeyboardButton("📈Статистика", callback_data=json.dumps([0, "statistics"]))
+        history = InlineKeyboardButton("📆История", callback_data=json.dumps([0, "history"]))
+        panel.add(orders, menu_settings, row_width=1)
+        if dict_administrators[user_id]["Уровень доступа"] == 1:
+            panel.add(admin_settings)
+        panel.add(statistics, history, row_width=1)
+        return panel
+
+    if case == "Заказы":
+        #[(44, 'Аджабсандали', 1, 16.7, 16.7, '2023-09-25 17:46:43'),
+        # (45, 'Салат -микс с цыплёнком ', 1, 10.0, 10, '2023-09-25 17:47:03')]
+        orders = InlineKeyboardMarkup()
+        accepted = InlineKeyboardButton("Принять", callback_data=json.dumps([0, "accepted"]))
+        text = "Заказ №:"
+        for information in dict_administrators["Заказы в обработке"]:
+            text += ""
+    # if case == "Изменения в меню":
+    # if case == "Настройки Администраторов":
+    # if case == "Статистика":
+    # if case == "История":
+
+
+def category(case, user_id):
     if case == "Главная клавиатура":
         hello_board = InlineKeyboardMarkup()
         menu = InlineKeyboardButton("📂Меню", callback_data=json.dumps([2, "menu"]))
         profile = InlineKeyboardButton("🤗Профиль", callback_data=json.dumps([2, "profile"]))
         my_orders = InlineKeyboardButton("📋Мои заказы", callback_data=json.dumps([2, "orders"]))
         hello_board.add(menu, profile, my_orders, row_width=1)
+        if user_id in dict_administrators.keys():
+            settings = InlineKeyboardButton("⚙️Настройки", callback_data=json.dumps([0, "settings"]))
+            hello_board.add(settings)
         return hello_board
     if case == "Клавиатура меню":
         updated_menu, flag = [], 1
@@ -105,7 +142,7 @@ def select_count(count, case, group_id, group_el):
     data = [3, count, case, group_id, group_el]
     order_count = InlineKeyboardMarkup()
     button_decrease = InlineKeyboardButton("➖", callback_data=json.dumps(data + ["-"]))
-    number = InlineKeyboardButton(f"{count}", callback_data=json.dumps(data))
+    number = InlineKeyboardButton(f"{count}", callback_data=json.dumps([0]))
     button_increase = InlineKeyboardButton("➕", callback_data=json.dumps(data + ["+"]))
     cart_button = InlineKeyboardButton("Корзина", callback_data=json.dumps(data + ["cart"]))
     add_button = InlineKeyboardButton("Добавить", callback_data=json.dumps(data + ["add"]))
@@ -335,6 +372,8 @@ def location(geodata):
                          reply_markup=order_accepting(case="Address confirmation", chat_id=user_id))
 
 
+# {687986481: {'Имя': 'Никита', 'Фамилия': 'Саркисов', 'Телефон': '+375256910740', 'Начало Работы': '25.09.2022',
+# 'Окончание Работы': None, 'Уровень доступа': 1}}
 @bot.message_handler(content_types=['text'])
 def start(message):
     user_id = message.from_user.id
@@ -360,14 +399,20 @@ def start(message):
                                 f'WHERE Имя = "{name}" AND "ID TG" = {user_id}', [sl.Binary(avatar)])
             del searching_user
         if message.text == '/start':
-            if user_id not in dict_users.keys():
+            if user_id not in dict_users.keys() and user_id not in dict_administrators.keys():
                 bot.send_message(message.chat.id, f"Привет 🤩 {name}!😍\n"
                                                   f"Мы рады приветствовать вас")
+            if user_id in dict_administrators.keys():
+                bot.send_message(message.chat.id, f"Добро пожаловать Администратор 💻{name}!")
+
             bot.send_message(message.chat.id,
-                             '📲Выберите интересующий вас раздел', reply_markup=category(case="Главная клавиатура"))
+                             '📲Выберите интересующий вас раздел',
+                             reply_markup=category(case="Главная клавиатура", user_id=user_id))
+
         if message.text == '/menu':
             bot.send_message(message.chat.id,
-                             'Выберите категорию в Меню ⬇️', reply_markup=category(case="Клавиатура меню"))
+                             'Выберите категорию в Меню ⬇️',
+                             reply_markup=category(case="Клавиатура меню", user_id=user_id))
         if message.text == '/card':
             if user_id in dict_users.keys() and "Корзина" in dict_users[user_id].keys():
                 text = order_info(user_id, case="current order")
@@ -387,7 +432,7 @@ def start(message):
                             f'WHERE "ID TG" = {user_id}')
             bot.send_message(message.chat.id,
                              'Данные обновлены\n📲Выберите интересующий вас раздел',
-                             reply_markup=category(case="Главная клавиатура"))
+                             reply_markup=category(case="Главная клавиатура", user_id=user_id))
             del dict_users[user_id]["Телефон"]
 
     if user_id in dict_users.keys() and "Оформление" in dict_users[user_id].keys():
@@ -461,6 +506,27 @@ def query_handler(call):
 
     if len(call.data) > 1:
         data = call.data[1:]
+    if flag == 0:
+        opertions = ["settings", "orders", "menu_settings", "admin", "statistics", "history"]
+        opertion = data[0]
+        if opertion == "settings":
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  text="Панель администратора",
+                                  reply_markup=admin_panel(case="Панель Администраторов", user_id=id))
+        if opertion == "orders":
+            with con:
+                orders = con.execute(f"SELECT Заказы.ID, Позиции.Имя, [Состав заказа].Количество, Позиции.Стоимость, "
+                                     f"Заказы.Стоимость, Заказы.Время FROM Позиции "
+                                     f"INNER JOIN [Состав заказа] on [Состав заказа].[ID позиции] = Позиции.ID "
+                                     f"INNER JOIN Заказы ON [Состав заказа].[ID заказа] = Заказы.ID "
+                                     f"INNER JOIN Пользователи ON Заказы.[ID Пользователя] = Пользователи.ID "
+                                     f"WHERE Заказы.Состояние = 'Обработка'")
+                for information in orders:
+                    if "Заказы" not in dict_administrators.keys():
+                        dict_administrators.update({"Заказы в обработке": information})
+                    else:
+                        dict_administrators["Заказы в обработке"] += information
+            admin_panel(case="Заказы", user_id=id)
 
     if flag == 1:
         index = data[0]
@@ -474,11 +540,11 @@ def query_handler(call):
             try:
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                       text='Выберите категорию в Меню ⬇️',
-                                      reply_markup=category(case="Клавиатура меню"))
+                                      reply_markup=category(case="Клавиатура меню", user_id=id))
             except:
                 bot.send_message(chat_id=call.message.chat.id,
                                  text='Выберите категорию в Меню ⬇️',
-                                 reply_markup=category(case="Клавиатура меню"))
+                                 reply_markup=category(case="Клавиатура меню", user_id=id))
         elif operation == "profile":
             with con:
                 user_profile = con.execute(f'SELECT * FROM Пользователи WHERE [ID TG] = {id}')
