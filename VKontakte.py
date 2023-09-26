@@ -8,6 +8,7 @@ import sqlite3 as sl
 import requests
 from PIL import Image
 from io import BytesIO
+from datetime import datetime
 
 
 with open('Config.json') as config_file:
@@ -74,7 +75,7 @@ def is_slider(board, case): #case = change или Меню
 
 def menu_section(txt, user_id):   #Меню
     global keyboard
-    #keyboard.clear()
+    keyboard.clear()
     step = 0
     user_lst = []
     if txt == "Меню":
@@ -259,10 +260,35 @@ def checkout(case, user_id):
         return keyboardconfirmation
     
 def save_checklist(user_id):
+    phone = user[user_id]['checkout']['Телефон']
+    address = ''
+    if user[user_id]['checkout']['Способ доставки'] == 'Доставка':
+        address = user[user_id]['checkout']['Улица'] + ',' + user[user_id]['checkout']['Дом'] + ',' + user[user_id]['checkout']['Квартира']
+    price = sum([el[1]*el[2] for el in user[user_id]['bag']])
+    print(address)
+    price = round(price, 2)
+    payment = user[user_id]['checkout']['Способ оплаты'] 
+    delivery = user[user_id]['checkout']['Способ доставки']
+    delivery_time = datetime.now().replace(microsecond=0)
+    print(delivery_time)
+    print(phone, delivery_time, address, price, payment, delivery)
     with con:
     # Вставка номера телефона в бд
-        con.execute('UPDATE OR IGNORE Пользователи SET Телефон = ? WHERE "ID Vk" = ?', [ user_id])
-        
+        con.execute('UPDATE OR IGNORE Пользователи SET Телефон = ? WHERE "ID Vk" = ?', (phone, user_id))
+        print('hello')
+        con.execute('INSERT OR IGNORE INTO Заказы ("ID Пользователя", Время, Адресс, Стоимость, Оплата, Доставка) VALUES ((SELECT ID FROM Пользователи WHERE [ID Vk] = ?),?,?,?,?,?)', [user_id, delivery_time, address, price, payment, delivery])
+        print('hi')
+        for good in user[user_id]['bag']:
+            amount = good[1]
+            name = good[0]
+            print(name)
+            con.execute(f'INSERT OR IGNORE INTO [Состав заказа] (Количество, "ID заказа", "ID позиции") '
+                        f'VALUES (?,(SELECT Заказы.ID FROM Заказы '
+                        f'INNER JOIN Пользователи ON Заказы."ID Пользователя" = Пользователи.ID '
+                        f'WHERE Пользователи."ID Vk" = {user_id} ORDER BY Заказы.ID DESC LIMIT 1),'
+                        f'(SELECT ID FROM Позиции WHERE Имя = "{name}"))', [amount])
+  
+            
 def check_info(user_id):
     text = "Ваш заказ:\n"
     num = 1
@@ -274,7 +300,6 @@ def check_info(user_id):
         result += cost
 
     if 'checkout' in user[user_id].keys():
-        print('hi')
         text += "\n"
         for inf in user[user_id]['checkout'].items():
             text += inf[0] + " : " + inf[1] + "\n"
@@ -298,12 +323,14 @@ for event in longpoll.listen():
                 for x in take_address:
                     response = response[x]
                 response = response.split(', ')  # ['Беларусь', 'Минск', 'улица Франциска Скорины', '8к1']
-                print(response)
+                print(response)  #['Беларусь', 'Минск', 'Ленинский район', 'микрорайон Лошица', 'улица Прушинских', '78']
                 question = f"Ваш адрес {','.join(response[2:])}?"
                 if len(response) == 3:
                     user[event.obj.message['from_id']]['checkout'].update({"Улица": response[2]})
-                else:
+                elif len(response) == 4:
                     user[event.obj.message['from_id']]['checkout'].update({"Улица": response[2], "Дом": response[3]})
+                else:
+                    user[event.obj.message['from_id']]['checkout'].update({"Улица": response[4], "Дом": response[5]})
                 vk.messages.send(
                         user_id=event.obj.message['from_id'],
                         random_id=get_random_id(),
@@ -331,7 +358,6 @@ for event in longpoll.listen():
             try:
                 if event.obj.message['from_id'] in user.keys() and 'checkout' in user[event.obj.message['from_id']].keys():
                     text = ''
-                    print(text)
                     if user[event.obj.message['from_id']]['checkout']['Способ доставки'] == "Доставка":
                         if "Улица" not in user[event.obj.message['from_id']]['checkout'].keys():
                             user[event.obj.message['from_id']]['checkout'].update({"Улица": event.obj.message['text']})
@@ -344,22 +370,23 @@ for event in longpoll.listen():
                             text = "Укажите номер Телефона"
                         elif "Телефон" not in user[event.obj.message['from_id']]['checkout'].keys():
                             user[event.obj.message['from_id']]['checkout'].update({"Телефон": event.obj.message['text']})
-                          
+                            save_checklist(event.obj.message['from_id'])
                             text = check_info(event.obj.message['from_id'])
-                    
+                      
                     elif user[event.obj.message['from_id']]['checkout']['Способ доставки'] == "Самовывоз":
                         user[event.obj.message['from_id']]['checkout'].update({"Телефон": event.obj.message['text']})
+                        save_checklist(event.obj.message['from_id'])
                         text = check_info(event.obj.message['from_id'])
-                        print(user[event.obj.message['from_id']]['checkout'])  
+                         
                         
                     elif user[event.obj.message['from_id']]['checkout']['Способ доставки'] == "В заведении":
                         if "Место" not in user[event.obj.message['from_id']]['checkout'].keys():
                             user[event.obj.message['from_id']]['checkout'].update({"Место": event.obj.message['text']})
                             text = "Укажите номер телефона"
                         elif "Телефон" not in user[event.obj.message['from_id']]['checkout'].keys():
-                            user[event.obj.message['from_id']]['checkout'].update({"Телефон": event.obj.message['text']}) 
-                            text = check_info(event.obj.message['from_id'])
-                        print(user[event.obj.message['from_id']]['checkout'])      
+                            user[event.obj.message['from_id']]['checkout'].update({"Телефон": event.obj.message['text']})
+                            save_checklist(event.obj.message['from_id']) 
+                            text = check_info(event.obj.message['from_id'])     
                     if text != "":
                         vk.messages.send(
                             user_id=event.obj.message['from_id'],
@@ -672,19 +699,19 @@ for event in longpoll.listen():
                         message= "Отправьте геолокацию:",
                         conversation_message_id=event.obj.conversation_message_id,
                         keyboard = checkout(case = 'geo', user_id = event.object.user_id).get_keyboard())    
-                if operation == 'подтверждение':
-                    if name == "Да":
-                        if "Дом" not in user[event.obj.user_id]['checkout'].keys():
-                            vk.messages.edit(
-                                peer_id=event.obj.peer_id,
-                                message= "Укажите номер дома:",
-                                conversation_message_id=event.obj.conversation_message_id)
-                        else:
-                            vk.messages.edit(
+            if operation == 'подтверждение':
+                if name == "Да":
+                    if "Дом" not in user[event.obj.user_id]['checkout'].keys():
+                        vk.messages.edit(
                             peer_id=event.obj.peer_id,
-                            message= "Укажите номер квартитры:",
+                            message= "Укажите номер дома:",
                             conversation_message_id=event.obj.conversation_message_id)
-                     
+                    else:
+                        vk.messages.edit(
+                        peer_id=event.obj.peer_id,
+                        message= "Укажите номер квартитры:",
+                        conversation_message_id=event.obj.conversation_message_id)
+                
                            
 
             
