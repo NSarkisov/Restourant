@@ -21,31 +21,77 @@ con = sl.connect(database, check_same_thread=False)
 dict_users = {}
 dict_administrators = {}
 with con:
+    administrators = con.execute("SELECT * FROM Администраторы")
+    # (1, 'Никита', 'Саркисов', '+375256910740', '25.09.2022', None, 1, 687986481)
+    for information in administrators.fetchall():
+        dict_administrators.update(
+            {information[7]: {"Имя": information[1], "Фамилия": information[2], "Телефон": information[3],
+                              "Начало Работы": information[4], "Окончание Работы": information[5],
+                              "Уровень доступа": information[6]}})
     menu = con.execute("SELECT Название FROM 'Разделы Меню'")
     menu_categories = []
     for categories in menu.fetchall():
         menu_categories.append(categories[0])
     dict_users["Категории Меню"] = menu_categories
-    del menu_categories, menu, categories, f
+    del menu_categories, menu, categories, administrators, f
 
 
-def category():
-    updated_menu, flag = [], [1]
+# {687986481: {'Имя': 'Никита', 'Фамилия': 'Саркисов', 'Телефон': '+375256910740', 'Начало Работы': '25.09.2022',
+# 'Окончание Работы': None, 'Уровень доступа': 1}}
+def admin_panel(case, user_id):
+    if case == "Панель Администраторов":
+        panel = InlineKeyboardMarkup()
+        orders = InlineKeyboardButton("📋Заказы", callback_data=json.dumps([0, "orders"]))
+        menu_settings = InlineKeyboardButton("🧁Изменения в меню", callback_data=json.dumps([0, "menu_settings"]))
+        admin_settings = InlineKeyboardButton("⚙️Настройка администраторов", callback_data=json.dumps([0, "admin"]))
+        statistics = InlineKeyboardButton("📈Статистика", callback_data=json.dumps([0, "statistics"]))
+        history = InlineKeyboardButton("📆История", callback_data=json.dumps([0, "history"]))
+        panel.add(orders, menu_settings, row_width=1)
+        if dict_administrators[user_id]["Уровень доступа"] == 1:
+            panel.add(admin_settings)
+        panel.add(statistics, history, row_width=1)
+        return panel
 
-    with con:
-        data = con.execute('SELECT Название FROM "Разделы Меню"')
-        for categories in data.fetchall():
-            updated_menu.append(categories[0])
-        if dict_users["Категории Меню"] is not updated_menu:
-            dict_users["Категории Меню"] = updated_menu
-        del updated_menu, categories
+    if case == "Заказы":
+        #[(44, 'Аджабсандали', 1, 16.7, 16.7, '2023-09-25 17:46:43'),
+        # (45, 'Салат -микс с цыплёнком ', 1, 10.0, 10, '2023-09-25 17:47:03')]
+        orders = InlineKeyboardMarkup()
+        accepted = InlineKeyboardButton("Принять", callback_data=json.dumps([0, "accepted"]))
+        text = "Заказ №:"
+        for information in dict_administrators["Заказы в обработке"]:
+            text += ""
+    # if case == "Изменения в меню":
+    # if case == "Настройки Администраторов":
+    # if case == "Статистика":
+    # if case == "История":
 
-    markup_category = InlineKeyboardMarkup()
-    for categories in dict_users["Категории Меню"]:
-        index = dict_users["Категории Меню"].index(categories)
-        markup_category.add(InlineKeyboardButton(categories, callback_data=json.dumps(flag + [index])))
-    del categories
-    return markup_category
+
+def category(case, user_id):
+    if case == "Главная клавиатура":
+        hello_board = InlineKeyboardMarkup()
+        menu = InlineKeyboardButton("📂Меню", callback_data=json.dumps([2, "menu"]))
+        profile = InlineKeyboardButton("🤗Профиль", callback_data=json.dumps([2, "profile"]))
+        my_orders = InlineKeyboardButton("📋Мои заказы", callback_data=json.dumps([2, "orders"]))
+        hello_board.add(menu, profile, my_orders, row_width=1)
+        if user_id in dict_administrators.keys():
+            settings = InlineKeyboardButton("⚙️Настройки", callback_data=json.dumps([0, "settings"]))
+            hello_board.add(settings)
+        return hello_board
+    if case == "Клавиатура меню":
+        updated_menu, flag = [], 1
+        with con:
+            data = con.execute('SELECT Название FROM "Разделы Меню"')
+            for categories in data.fetchall():
+                updated_menu.append(categories[0])
+            if dict_users["Категории Меню"] is not updated_menu:
+                dict_users["Категории Меню"] = updated_menu
+            del updated_menu, categories
+        markup_category = InlineKeyboardMarkup()
+        for categories in dict_users["Категории Меню"]:
+            index = dict_users["Категории Меню"].index(categories)
+            markup_category.add(InlineKeyboardButton(categories, callback_data=json.dumps([flag, index])))
+        del categories
+        return markup_category
 
 
 def products(data, user_id):
@@ -88,17 +134,15 @@ def select_product(user_id, count):
             case = "Next"
             if count == (len(dict_users[user_id]["groups"]) - 1):
                 case = "Menu"
-                # dict_users[user_id]["groups"] = None
         bot.send_photo(chat_id=user_id, photo=image, caption=caption,
                        reply_markup=select_count(count=1, case=case, group_id=count, group_el=index))
 
 
 def select_count(count, case, group_id, group_el):
     data = [3, count, case, group_id, group_el]
-
     order_count = InlineKeyboardMarkup()
     button_decrease = InlineKeyboardButton("➖", callback_data=json.dumps(data + ["-"]))
-    number = InlineKeyboardButton(f"{count}", callback_data=json.dumps(data))
+    number = InlineKeyboardButton(f"{count}", callback_data=json.dumps([0]))
     button_increase = InlineKeyboardButton("➕", callback_data=json.dumps(data + ["+"]))
     cart_button = InlineKeyboardButton("Корзина", callback_data=json.dumps(data + ["cart"]))
     add_button = InlineKeyboardButton("Добавить", callback_data=json.dumps(data + ["add"]))
@@ -110,47 +154,43 @@ def select_count(count, case, group_id, group_el):
     if case == "Next":
         order_count.row(cart_button, add_button, next_button)
     if case == "Menu":
-        flag = [2]
-        menu = InlineKeyboardButton("Меню", callback_data=json.dumps(flag))
+        data = [2, "menu"]
+        menu = InlineKeyboardButton("Меню", callback_data=json.dumps(data))
         order_count.row(cart_button, add_button, menu)
     return order_count
 
 
-def cart_processing(case, chat_id):
-    menu = InlineKeyboardButton("Меню", callback_data=json.dumps([2]))
-
+def cart_processing(case, user_id):
+    menu = InlineKeyboardButton("Меню", callback_data=json.dumps([2, "menu"]))
     if case == "show":
         data = [4, "change", "accept"]
         show_buttons = InlineKeyboardMarkup()
         change_button = InlineKeyboardButton("Изменить", callback_data=json.dumps([data[0], data[1]]))
-        menu = InlineKeyboardButton("Меню", callback_data=json.dumps([2]))
         accept_order = InlineKeyboardButton("Подтвердить", callback_data=json.dumps([data[0], data[2]]))
         show_buttons.row(change_button, menu, accept_order)
         return show_buttons
-
     if case == "change":
         data = [4, "Изменить", "back", "<", ">", "x"]
         change_buttons = InlineKeyboardMarkup()
         accept_changes = InlineKeyboardButton("Изменить", callback_data=json.dumps([data[0], data[1]]))
         back_button = InlineKeyboardButton("Назад", callback_data=json.dumps([data[0], data[2]]))
-        if "Изменённая Корзина" not in dict_users[chat_id].keys() or dict_users[chat_id]["Изменённая Корзина"] is None:
-            dict_users[chat_id]["Изменённая Корзина"] = dict_users[chat_id]["Корзина"]
-        for el in dict_users[chat_id]["Изменённая Корзина"]:
-            cost = el[1] * el[2]
+        if "Изменённая Корзина" not in dict_users[user_id].keys() or dict_users[user_id]["Изменённая Корзина"] is None:
+            dict_users[user_id]["Изменённая Корзина"] = dict_users[user_id]["Корзина"].copy()
+        for el in dict_users[user_id]["Изменённая Корзина"]:
+            cost = round(el[1] * el[2], 2)
             amount = el[2]
-            index = dict_users[chat_id]["Изменённая Корзина"].index(el)
+            index = dict_users[user_id]["Изменённая Корзина"].index(el)
             button_decrease = InlineKeyboardButton("<", callback_data=json.dumps([data[0], data[3], index]))
             button_increase = InlineKeyboardButton(">", callback_data=json.dumps([data[0], data[4], index]))
             button_delete = InlineKeyboardButton("X", callback_data=json.dumps([data[0], data[5], index]))
             amount_btn = InlineKeyboardButton(f"{index + 1}: {amount} шт.", callback_data=json.dumps([4]))
             cost_btn = InlineKeyboardButton(f"{cost}", callback_data=json.dumps([4]))
             change_buttons.row(button_decrease, amount_btn, cost_btn, button_increase, button_delete)
-            if el is dict_users[chat_id]["Изменённая Корзина"][-1]:
+            if el is dict_users[user_id]["Изменённая Корзина"][-1]:
                 change_buttons.row(back_button, menu, accept_changes)
-        if len(dict_users[chat_id]["Изменённая Корзина"]) == 0:
+        if len(dict_users[user_id]["Изменённая Корзина"]) == 0:
             change_buttons.row(back_button, menu, accept_changes)
         return change_buttons
-
     if case == "Menu":
         back_to_menu = InlineKeyboardMarkup()
         back_to_menu.add(menu)
@@ -217,12 +257,17 @@ def order_info(user_id, case):
                 number = con.execute(f'SELECT Заказы.ID FROM Заказы INNER JOIN Пользователи '
                                      f'ON Заказы.[ID Пользователя] = Пользователи.ID '
                                      f'WHERE Пользователи.[ID TG] = {user_id} ORDER BY Заказы.ID DESC LIMIT 1;')
+                is_phone = con.execute(f'SELECT Телефон FROM Пользователи '
+                                       f'WHERE "ID TG" = {user_id}')
+            telephone = is_phone.fetchall()[0][0]
             number = number.fetchall()[0][0]
 
             order = f"\n"
 
             for information in dict_users[user_id]["Оформление"].items():
                 order += information[0] + " : " + information[1] + "\n"
+            if telephone is not None:
+                order += f"Номер телефона : {telephone}"
             order += "\n"
             if dict_users[user_id]["Оформление"]["Способ Доставки"] == "Доставка":
                 order += "Доставка в течении: 30 ± 5 минут\n"
@@ -235,13 +280,13 @@ def order_info(user_id, case):
         indexing = 1
         total = 0
         for position in dict_users[user_id]["Корзина"]:
-            cost = position[1] * position[2]
+            cost = round(position[1] * position[2], 2)
             text += f"{indexing}. {position[0]}, кол-во: {position[2]} сумма: {cost}.BYN\n"
             indexing += 1
             total += cost
         if order is not None:
             text += order
-        text += f"Итого: {total} BYN"
+        text += f"Итого: {round(total, 2)} BYN"
         return text
     if case == "show orders":
         orders_dict = {}
@@ -263,7 +308,6 @@ def order_info(user_id, case):
             text += f"Номер заказа: {order[0]}\n"
             text += f"Оформлен: {order[1]['Время']}\n"
             for products in order[1]["Позиции"]:
-                cost = products[1] * products[2]
                 index = order[1]["Позиции"].index(products) + 1
                 text += f"{index}.{products[0]}, кол-во:{products[1]}\n"
                 total = products[3]
@@ -272,7 +316,10 @@ def order_info(user_id, case):
 
 
 def order_to_base(user_id):
-    telephone = dict_users[user_id]["Оформление"]["Телефон"]
+    if "Телефон" in dict_users[user_id]["Оформление"].keys():
+        telephone = dict_users[user_id]["Оформление"]["Телефон"]
+    else:
+        telephone = None
     address = None
     if dict_users[user_id]["Оформление"]["Способ Доставки"] == "Доставка":
         street = dict_users[user_id]["Оформление"]["Улица"]
@@ -280,12 +327,14 @@ def order_to_base(user_id):
         apartment = dict_users[user_id]["Оформление"]["Квартира"]
         address = street + ", " + house + ", " + apartment
     cost = sum(x[1] * x[2] for x in dict_users[user_id]["Корзина"])
+    cost = round(cost, 2)
     payment = dict_users[user_id]["Оформление"]["Способ Оплаты"]
     delivery = dict_users[user_id]["Оформление"]["Способ Доставки"]
     current_date_time = datetime.now().replace(microsecond=0)
     with con:
-        con.execute(f'UPDATE OR IGNORE Пользователи set Телефон = (?)'
-                    f'WHERE [ID TG] = {user_id}', [telephone])
+        if telephone is not None:
+            con.execute(f'UPDATE OR IGNORE Пользователи set Телефон = (?)'
+                        f'WHERE [ID TG] = {user_id}', [telephone])
         con.execute(f'INSERT OR IGNORE INTO Заказы ("ID Пользователя", Время, Адресс, Стоимость, Оплата, Доставка) '
                     f'values ((SELECT ID FROM Пользователи WHERE [ID TG] = {user_id}),'
                     f'("{current_date_time}"),?,?,?,?)',
@@ -323,6 +372,8 @@ def location(geodata):
                          reply_markup=order_accepting(case="Address confirmation", chat_id=user_id))
 
 
+# {687986481: {'Имя': 'Никита', 'Фамилия': 'Саркисов', 'Телефон': '+375256910740', 'Начало Работы': '25.09.2022',
+# 'Окончание Работы': None, 'Уровень доступа': 1}}
 @bot.message_handler(content_types=['text'])
 def start(message):
     user_id = message.from_user.id
@@ -348,29 +399,41 @@ def start(message):
                                 f'WHERE Имя = "{name}" AND "ID TG" = {user_id}', [sl.Binary(avatar)])
             del searching_user
         if message.text == '/start':
-            hello_board = InlineKeyboardMarkup()
-            menu = InlineKeyboardButton("📂Меню", callback_data=json.dumps([2, "menu"]))
-            profile = InlineKeyboardButton("🤗Профиль", callback_data=json.dumps([2, "profile"]))
-            my_orders = InlineKeyboardButton("📋Мои заказы", callback_data=json.dumps([2, "orders"]))
-            hello_board.add(menu, profile, my_orders, row_width=1)
-            if user_id not in dict_users.keys():
+            if user_id not in dict_users.keys() and user_id not in dict_administrators.keys():
                 bot.send_message(message.chat.id, f"Привет 🤩 {name}!😍\n"
                                                   f"Мы рады приветствовать вас")
+            if user_id in dict_administrators.keys():
+                bot.send_message(message.chat.id, f"Добро пожаловать Администратор 💻{name}!")
+
             bot.send_message(message.chat.id,
-                             '📲Выберите интересующий вас раздел', reply_markup=hello_board)
+                             '📲Выберите интересующий вас раздел',
+                             reply_markup=category(case="Главная клавиатура", user_id=user_id))
+
         if message.text == '/menu':
             bot.send_message(message.chat.id,
-                             'Выберите категорию в Меню ⬇️', reply_markup=category())
+                             'Выберите категорию в Меню ⬇️',
+                             reply_markup=category(case="Клавиатура меню", user_id=user_id))
         if message.text == '/card':
             if user_id in dict_users.keys() and "Корзина" in dict_users[user_id].keys():
                 text = order_info(user_id, case="current order")
-                bot.send_message(message.chat.id, text=text, reply_markup=cart_processing(case="show", chat_id=user_id))
+                bot.send_message(message.chat.id, text=text, reply_markup=cart_processing(case="show", user_id=user_id))
             else:
                 bot.send_message(message.chat.id, text="Ваша корзина пуста, перейдите в меню",
-                                 reply_markup=cart_processing(case="Menu", chat_id=user_id))
+                                 reply_markup=cart_processing(case="Menu", user_id=user_id))
         if message.text == '/orders':
             text = order_info(user_id, case="show orders")
             bot.send_message(message.chat.id, text=text)
+
+    if user_id in dict_users.keys() and "Телефон" in dict_users[user_id].keys():
+        if dict_users[user_id]["Телефон"] is None:
+            with con:
+                con.execute(f'UPDATE OR IGNORE Пользователи '
+                            f'SET Телефон = "{message.text}" '
+                            f'WHERE "ID TG" = {user_id}')
+            bot.send_message(message.chat.id,
+                             'Данные обновлены\n📲Выберите интересующий вас раздел',
+                             reply_markup=category(case="Главная клавиатура", user_id=user_id))
+            del dict_users[user_id]["Телефон"]
 
     if user_id in dict_users.keys() and "Оформление" in dict_users[user_id].keys():
         hide_keyboard = ReplyKeyboardRemove()
@@ -385,8 +448,18 @@ def start(message):
                 text = "Укажите номер квартиры"
             elif "Квартира" not in dict_users[user_id]["Оформление"].keys():
                 dict_users[user_id]["Оформление"].update({"Квартира": message.text})
-                text = "Укажите номер Телефона"
-            elif "Телефон" not in dict_users[user_id]["Оформление"].keys():
+                with con:
+                    is_phone = con.execute(f'SELECT Телефон FROM Пользователи '
+                                           f'WHERE "ID TG" = {user_id}')
+                    telephone = is_phone.fetchall()[0][0]
+                    if telephone is not None:
+                        order_to_base(user_id)
+                        text = order_info(user_id, case="current order")
+                        finished_order = True
+
+                    else:
+                        text = "Укажите номер Телефона"
+            elif "Телефон" not in dict_users[user_id]["Оформление"].keys() and not finished_order:
                 dict_users[user_id]["Оформление"].update({"Телефон": message.text})
                 order_to_base(user_id)
                 text = order_info(user_id, case="current order")
@@ -395,17 +468,26 @@ def start(message):
         elif dict_users[user_id]["Оформление"]["Способ Доставки"] == "Самовывоз":
             dict_users[user_id]["Оформление"].update({"Телефон": message.text})
             order_to_base(user_id)
-            text = order_info(user_id)
+            text = order_info(user_id, case="current order")
             finished_order = True
 
         elif dict_users[user_id]["Оформление"]["Способ Доставки"] == "В заведении":
             if "Номер стола" not in dict_users[user_id]["Оформление"].keys():
                 dict_users[user_id]["Оформление"].update({"Номер стола": message.text})
-                text = "Укажите номер телефона"
-            elif "Телефон" not in dict_users[user_id]["Оформление"].keys():
+                with con:
+                    is_phone = con.execute(f'SELECT Телефон FROM Пользователи '
+                                           f'WHERE "ID TG" = {user_id}')
+                    telephone = is_phone.fetchall()[0][0]
+                    if telephone is not None:
+                        order_to_base(user_id)
+                        text = order_info(user_id, case="current order")
+                        finished_order = True
+                    else:
+                        text = "Укажите номер телефона"
+            elif "Телефон" not in dict_users[user_id]["Оформление"].keys() and not finished_order:
                 dict_users[user_id]["Оформление"].update({"Телефон": message.text})
                 order_to_base(user_id)
-                text = order_info(user_id)
+                text = order_info(user_id, case="current order")
                 finished_order = True
 
         if text != "":
@@ -417,7 +499,6 @@ def start(message):
 @bot.callback_query_handler(func=lambda call: True)
 def query_handler(call):
     bot.answer_callback_query(callback_query_id=call.id, )
-
     id = call.message.chat.id
     call.data = json.loads(call.data)
     flag = call.data[0]
@@ -425,6 +506,27 @@ def query_handler(call):
 
     if len(call.data) > 1:
         data = call.data[1:]
+    if flag == 0:
+        opertions = ["settings", "orders", "menu_settings", "admin", "statistics", "history"]
+        opertion = data[0]
+        if opertion == "settings":
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  text="Панель администратора",
+                                  reply_markup=admin_panel(case="Панель Администраторов", user_id=id))
+        if opertion == "orders":
+            with con:
+                orders = con.execute(f"SELECT Заказы.ID, Позиции.Имя, [Состав заказа].Количество, Позиции.Стоимость, "
+                                     f"Заказы.Стоимость, Заказы.Время FROM Позиции "
+                                     f"INNER JOIN [Состав заказа] on [Состав заказа].[ID позиции] = Позиции.ID "
+                                     f"INNER JOIN Заказы ON [Состав заказа].[ID заказа] = Заказы.ID "
+                                     f"INNER JOIN Пользователи ON Заказы.[ID Пользователя] = Пользователи.ID "
+                                     f"WHERE Заказы.Состояние = 'Обработка'")
+                for information in orders:
+                    if "Заказы" not in dict_administrators.keys():
+                        dict_administrators.update({"Заказы в обработке": information})
+                    else:
+                        dict_administrators["Заказы в обработке"] += information
+            admin_panel(case="Заказы", user_id=id)
 
     if flag == 1:
         index = data[0]
@@ -438,13 +540,12 @@ def query_handler(call):
             try:
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                       text='Выберите категорию в Меню ⬇️',
-                                      reply_markup=category())
+                                      reply_markup=category(case="Клавиатура меню", user_id=id))
             except:
                 bot.send_message(chat_id=call.message.chat.id,
                                  text='Выберите категорию в Меню ⬇️',
-                                 reply_markup=category())
-        if operation == "profile":
-
+                                 reply_markup=category(case="Клавиатура меню", user_id=id))
+        elif operation == "profile":
             with con:
                 user_profile = con.execute(f'SELECT * FROM Пользователи WHERE [ID TG] = {id}')
                 user_orders = con.execute(f'SELECT COUNT(*) from Заказы '
@@ -459,50 +560,59 @@ def query_handler(call):
                     image = Image.open(BytesIO(information[3]))
                 user_orders = user_orders.fetchall()[0][0]
                 image = image.resize((350, 380))
-                caption = f"\n\nИмя: {name}\nТелефон: {phone}\nКоличество заказов: {user_orders}"
-                if phone == "":
-                    caption += "\n\nНе хотите ли ввести номер телефона?"
+                no_phone = False
+                caption = f"\n\nИмя: {name}\n"
+                if phone is None:
+                    caption += f"Телефон: Нет информации\n"
+                    no_phone = True
                     profile_keyboard.row(request_phone, menu)
                 else:
+                    caption += f"Телефон: {phone}\n"
                     profile_keyboard.row(menu)
+                caption += f"Количество заказов: {user_orders}"
+                if no_phone:
+                    caption += "\n\nНе хотите ли ввести номер телефона?"
                 bot.send_photo(chat_id=id, photo=image, caption=caption, reply_markup=profile_keyboard)
-        if operation == "orders":
+        elif operation == "orders":
             text = order_info(id, case="show orders")
             bot.send_message(id, text=text)
+        elif operation == "phone":
+            dict_users.update({id: {"Телефон": None}})
+            bot.send_message(id, text="Введите номер телефона\nВ формате: +375251234567")
+
     if flag == 3:
-
         count, case, group_id, group_el, operation = data[0], data[1], data[2], data[3], data[4]
-
-        if operation == "-":
-            if count > 0:
-                count -= 1
+        configuration = ["-", "+", "*"]
+        if operation in configuration:
+            if operation == "-":
+                if count > 0:
+                    count -= 1
+            elif operation == "+":
+                count += 1
+            elif operation == "*":
+                next_group = group_id + 1
+                case = 0
+                select_product(id, count=next_group)
+            bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                          reply_markup=select_count(count, case, group_id, group_el))
+        elif operation == "add":
+            if count != 1:
+                count = 1
                 bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                               reply_markup=select_count(count, case, group_id, group_el))
-        elif operation == "+":
-            count += 1
-            bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=select_count(count, case, group_id, group_el))
-        elif operation == "*":
-            group_id += 1
-            case = 0
-            bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=select_count(count, case, group_id, group_el))
-            select_product(id, count=group_id)
-        elif operation == "add":
-            reset_count = 1
-            if reset_count != count:
-                bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                              reply_markup=select_count(reset_count, case, group_id, group_el))
             name = dict_users[id]["groups"][group_id][group_el][0]
             price = dict_users[id]["groups"][group_id][group_el][3]
             bot.send_message(chat_id=call.message.chat.id,
                              text=f'Успешно добавлено:\n'
-                                  f'{name}: {count} шт. на сумму: {count * price}')
+                                  f'{name}: {count} шт. на сумму: {round(count * price, 2)}')
             if "Корзина" not in dict_users[id].keys():
                 dict_users[id].update({"Корзина": [[name, price, count]]})
             else:
-                dict_users[id]["Корзина"] += [[name, price, count]]
-
+                item = next((x for x in dict_users[id]["Корзина"] if x[0] == name), None)
+                if item:
+                    item[2] += count
+                else:
+                    dict_users[id]["Корзина"] += [[name, price, count]]
         elif operation == "cart":
             if "Корзина" not in dict_users[id].keys() or dict_users[id]["Корзина"] is None:
                 bot.send_message(chat_id=call.message.chat.id,
@@ -511,47 +621,46 @@ def query_handler(call):
                 text = order_info(id, case="current order")
                 bot.send_message(chat_id=call.message.chat.id,
                                  text=text,
-                                 reply_markup=cart_processing(case="show", chat_id=id))
+                                 reply_markup=cart_processing(case="show", user_id=id))
 
     if flag == 4:
         operation = data[0]
         index = 0
         if len(data) > 1:
             index = data[1]
-        if operation == "change":
-            bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=cart_processing(case="change", chat_id=id))
-        if operation == "<":
-            amount = dict_users[id]["Изменённая Корзина"][index][2]
-            amount -= 1
-            if amount >= 0:
+        configuration = ["change", "<", ">", "x", "back"]
+        if operation in configuration:
+            case = None
+            if operation == "change":
+                case = "change"
+            elif operation == "<":
+                case = "change"
+                amount = dict_users[id]["Изменённая Корзина"][index][2]
+                amount -= 1
+                if amount >= 0:
+                    dict_users[id]["Изменённая Корзина"][index][2] = amount
+            elif operation == ">":
+                case = "change"
+                amount = dict_users[id]["Изменённая Корзина"][index][2]
+                amount += 1
                 dict_users[id]["Изменённая Корзина"][index][2] = amount
-                bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                              reply_markup=cart_processing(case="change", chat_id=id))
-        if operation == ">":
-            amount = dict_users[id]["Изменённая Корзина"][index][2]
-            amount += 1
-            dict_users[id]["Изменённая Корзина"][index][2] = amount
+            elif operation == "x":
+                case = "change"
+                del dict_users[id]["Изменённая Корзина"][index]
+            elif operation == "back":
+                case = "show"
+                if "Изменённая Корзина" in dict_users[id].keys():
+                    del dict_users[id]["Изменённая Корзина"]
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=cart_processing(case="change", chat_id=id))
-        if operation == "x":
-            del dict_users[id]["Изменённая Корзина"][index]
-            bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=cart_processing(case="change", chat_id=id))
-        if operation == "back":
-            if "Изменённая Корзина" in dict_users[id].keys():
-                del dict_users[id]["Изменённая Корзина"]
-            bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          reply_markup=cart_processing(case="show", chat_id=id))
-
-        if operation == "Изменить":
+                                          reply_markup=cart_processing(case=case, user_id=id))
+        elif operation == "Изменить":
             if len(dict_users[id]["Изменённая Корзина"]) == 0:
                 del dict_users[id]["Изменённая Корзина"]
                 del dict_users[id]["Корзина"]
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                       text="После изменений Ваша корзина пуста\n"
                                            "Вернитесь пожалуйста в Меню",
-                                      reply_markup=cart_processing(case="Menu", chat_id=id))
+                                      reply_markup=cart_processing(case="Menu", user_id=id))
             else:
                 dict_users[id]["Корзина"] = dict_users[id]["Изменённая Корзина"]
                 temp = []
@@ -565,33 +674,17 @@ def query_handler(call):
                     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           text="После изменений Ваша корзина пуста\n"
                                                "Вернитесь пожалуйста в Меню",
-                                          reply_markup=cart_processing(case="Menu", chat_id=id))
+                                          reply_markup=cart_processing(case="Menu", user_id=id))
                 else:
                     del dict_users[id]["Изменённая Корзина"]
-                    text = "Выбраные позиции меню:\n"
-                    indexing = 1
-                    total = 0
-                    for el in dict_users[id]["Корзина"]:
-                        cost = el[1] * el[2]
-                        text += f"{indexing}. {el[0]}, кол-во: {el[2]} сумма: {cost}.BYN\n"
-                        indexing += 1
-                        total += cost
-                    text += f"Итого: {total} BYN"
+                    text = order_info(id, case="current order")
                     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                          text=text, reply_markup=cart_processing(case="show", chat_id=id))
-        if operation == "accept":
-            text = "Ваш заказ:\n"
-            indexing = 1
-            total = 0
-            for el in dict_users[id]["Корзина"]:
-                cost = el[1] * el[2]
-                text += f"{indexing}. {el[0]}, кол-во: {el[2]} сумма: {cost}.BYN\n"
-                indexing += 1
-                total += cost
-            text += f"Итого: {total} BYN"
+                                          text=text, reply_markup=cart_processing(case="show", user_id=id))
+        elif operation == "accept":
+            text = order_info(id, case="current order")
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   text=text, reply_markup=order_accepting(case="confirmation", chat_id=id))
-        if operation == "right":
+        elif operation == "right":
             bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                           reply_markup=order_accepting(case="Hide", chat_id=id))
             bot.send_message(chat_id=id, text="Как желаете получить заказ?",
@@ -600,7 +693,6 @@ def query_handler(call):
     if flag == 5:
         operation = data[0]
         case, text = "", ""
-
         if "Оформление" not in dict_users[id].keys() or dict_users[id]["Оформление"] is None:
             if operation == "by_delivery":
                 dict_users[id]["Оформление"] = {"Способ Доставки": "Доставка"}
@@ -611,32 +703,46 @@ def query_handler(call):
             bot.edit_message_text(chat_id=id, message_id=call.message.message_id,
                                   text="Выберите способ оплаты:",
                                   reply_markup=order_accepting(case="Payment", chat_id=id))
-
         elif operation == "Cash" or operation == "Card":
             if operation == "Cash":
                 operation = "Наличными"
             else:
                 operation = "Картой"
             dict_users[id]["Оформление"].update({"Способ Оплаты": operation})
+            with con:
+                is_phone = con.execute(f'SELECT Телефон FROM Пользователи '
+                                       f'WHERE "ID TG" = {id}')
+                telephone = is_phone.fetchall()[0][0]
+                keyboard = None
+
             if dict_users[id]["Оформление"]["Способ Доставки"] == "Доставка":
                 case, text = "address", "Отправьте своё местоположение\n" + "или укажите адрес в ручную"
+                keyboard = order_accepting(case=case, chat_id=id)
+
             elif dict_users[id]["Оформление"]["Способ Доставки"] == "Самовывоз":
-                case, text = "Hide", "Укажите номер телефона"
+                if telephone is None:
+                    case, text = "Hide", "Укажите номер телефона"
+                    keyboard = order_accepting(case=case, chat_id=id)
+                else:
+                    order_to_base(id)
+                    text = order_info(id, case="current order")
+                    keyboard = None
+                    del dict_users[id]["Оформление"], dict_users[id]["Корзина"]
+
             elif dict_users[id]["Оформление"]["Способ Доставки"] == "В заведении":
                 case, text = "Hide", "Укажите номер столика"
-            bot.edit_message_text(chat_id=id, message_id=call.message.message_id,
-                                  text=text, reply_markup=order_accepting(case=case, chat_id=id))
+                keyboard = order_accepting(case=case, chat_id=id)
 
+            bot.edit_message_text(chat_id=id, message_id=call.message.message_id,
+                                  text=text, reply_markup=keyboard)
         elif operation == "Geo":
             bot.delete_message(chat_id=id, message_id=call.message.message_id)
             bot.send_message(chat_id=id, text="Отправьте Геолокацию",
                              reply_markup=order_accepting(case="Geolocation", chat_id=id))
-
         elif operation == "Manual":
             bot.edit_message_text(chat_id=id, message_id=call.message.message_id,
                                   text="Укажите улицу",
                                   reply_markup=order_accepting(case="Hide", chat_id=id))
-
         elif operation == "Yes":
             if "Дом" not in dict_users[id]["Оформление"].keys():
                 text = "Укажите номер дома"
