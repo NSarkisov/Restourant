@@ -75,7 +75,7 @@ def is_slider(board, case): #case = change или Меню
 
 def menu_section(txt, user_id):   #Меню
     global keyboard
-    keyboard.clear()
+    keyboard=[]
     step = 0
     user_lst = []
     if txt == "Меню":
@@ -265,13 +265,10 @@ def save_checklist(user_id):
     if user[user_id]['checkout']['Способ доставки'] == 'Доставка':
         address = user[user_id]['checkout']['Улица'] + ',' + user[user_id]['checkout']['Дом'] + ',' + user[user_id]['checkout']['Квартира']
     price = sum([el[1]*el[2] for el in user[user_id]['bag']])
-    print(address)
     price = round(price, 2)
     payment = user[user_id]['checkout']['Способ оплаты'] 
     delivery = user[user_id]['checkout']['Способ доставки']
     delivery_time = datetime.now().replace(microsecond=0)
-    print(delivery_time)
-    print(phone, delivery_time, address, price, payment, delivery)
     with con:
     # Вставка номера телефона в бд
         con.execute('UPDATE OR IGNORE Пользователи SET Телефон = ? WHERE "ID Vk" = ?', (phone, user_id))
@@ -290,23 +287,37 @@ def save_checklist(user_id):
   
             
 def check_info(user_id):
-    text = "Ваш заказ:\n"
+    order_number = None
+    order = None
+    if 'checkout' in user[user_id].keys():
+        with con:
+            order_number = con.execute(f'SELECT Заказы.ID FROM Заказы INNER JOIN Пользователи '
+                                f'ON Заказы.[ID Пользователя] = Пользователи.ID '
+                                f'WHERE Пользователи.[ID Vk] = {user_id} ORDER BY Заказы.ID DESC LIMIT 1;')    #выбираю последний заказ из табл заказы
+        order_number = order_number.fetchall()[0][0]
+        order = ""
+        for inf in user[user_id]["checkout"].items():
+            order += inf[0] + " : " + inf[1] + "\n"
+        if user[user_id]["checkout"]["Способ доставки"] == "Доставка":
+            order += "Доставка в течении: 30 минут\n"
+
+    if  order_number is not None:
+        text = f"Ваш заказ: №{order_number}\n\n"
+    else:
+        text = "Ваш заказ:\n\n"
     num = 1
     result = 0
     for el in user[user_id]['bag']:
-        cost = el[1] * el[2]
-        text += f"{num}. {el[0]}, кол-во: {el[1]} сумма: {cost} BYN\n"
+        cost = round(el[1] * el[2], 2)
+        text += f"{num}. {el[0]}, кол-во: {el[1]} шт., сумма: {cost} BYN\n"
         num += 1
         result += cost
-
-    if 'checkout' in user[user_id].keys():
-        text += "\n"
-        for inf in user[user_id]['checkout'].items():
-            text += inf[0] + " : " + inf[1] + "\n"
-        text += "\n"
-    text += f"Итого: {result} BYN"
+    if order is not None:
+        text += order
+    text += f"Итого: {round(result, 2)} BYN"
     return text
         
+    
 print("Ready")
 
 for event in longpoll.listen():
@@ -418,9 +429,43 @@ for event in longpoll.listen():
                         peer_id=event.obj.message['peer_id'],
                         keyboard=key_board.get_keyboard(),
                         message= f'Что вы хотели бы заказать в нашем ресторане сегодня, {user_name}:')
-                elif event.obj.message['text'] == "Мои заказы":
-                    pass
                     
+                elif event.obj.message['text'] == "Мои заказы":
+                    user_id = event.obj.message['from_id']
+                    with con:
+                        my_orders = con.execute(f"SELECT Заказы.ID, Позиции.Имя, [Состав заказа].Количество, Позиции.Стоимость, "
+                                 f"Заказы.Стоимость, Заказы.Время FROM Позиции "
+                                 f"INNER JOIN [Состав заказа] on [Состав заказа].[ID позиции] = Позиции.ID "
+                                 f"INNER JOIN Заказы ON [Состав заказа].[ID заказа] = Заказы.ID "
+                                 f"INNER JOIN Пользователи ON Заказы.[ID Пользователя] = Пользователи.ID "
+                                 f"WHERE Пользователи.[ID Vk] = {user_id}")
+                        orders = {}
+                        for good in my_orders.fetchall():
+                            if good[0] not in orders.keys():
+                                orders.update({good[0]:{'time':good[5], 'positions':[list(good[1:5])]}})
+                            else:
+                                orders[good[0]]['positions'] += [list(good[1:5])]
+                        text = 'Ваши заказы: '
+                        for order in orders:
+                            order_time = orders[order]['time']
+                            num = 1
+                            result = 0
+                            text += f'Заказ №{order} \n'
+                            text += f'Оформлен {order_time}\n'
+                            for product in orders[order]['positions']:
+                                name = product[0]
+                                amount = product[1]
+                                price = product[2]
+                                total = product[3]
+                                text+= f'{num}. {name}, {amount} шт., сумма: {price} BYN\n'
+                                num +=1
+                            result += total 
+                            text += f'ИТОГО: {result} BYN \n\n'    
+                        vk.messages.send(
+                        user_id=event.obj.message['from_id'],
+                        random_id=get_random_id(),
+                        peer_id=event.obj.message['peer_id'],
+                        message= text)
                    
     elif event.type == VkBotEventType.MESSAGE_EVENT:
         if event.object.payload.get('type') in CALLBACK_TYPES:
@@ -529,7 +574,6 @@ for event in longpoll.listen():
                         peer_id=event.obj.peer_id,
                         message= f'{user_name}, к сожалению корзина пуста. Добавьте позицию!')
                 else:
-                    print(user[event.object.user_id]['bag'])
                     text = check_info(event.object.user_id)
                     vk.messages.send(
                             user_id=event.obj.user_id,
@@ -712,14 +756,6 @@ for event in longpoll.listen():
                         message= "Укажите номер квартитры:",
                         conversation_message_id=event.obj.conversation_message_id)
                 
-                           
-
-            
-              
-                  
-
-                
-               
-                            
+                                             
 if __name__ == '__main__':
     print()
