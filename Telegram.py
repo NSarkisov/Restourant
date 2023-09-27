@@ -20,24 +20,31 @@ bot = telebot.TeleBot(Token)
 con = sl.connect(database, check_same_thread=False)
 dict_users = {}
 dict_administrators = {"Администратор": {}, "Заказы": {}, "Принятые заказы": {}}
-with con:
-    administrators = con.execute("SELECT * FROM Администраторы")
-    # (1, 'Никита', 'Саркисов', '+375256910740', '25.09.2022', None, 1, 687986481)
-    for information in administrators.fetchall():
-        dict_administrators["Администратор"] = \
-            {information[7]: {"Имя": information[1], "Фамилия": information[2], "Телефон": information[3],
-                              "Начало Работы": information[4], "Окончание Работы": information[5],
-                              "Уровень доступа": information[6]}}
-    menu = con.execute("SELECT Название FROM 'Разделы Меню'")
-    menu_categories = []
-    for categories in menu.fetchall():
-        menu_categories.append(categories[0])
-    dict_users["Категории Меню"] = menu_categories
-    del menu_categories, menu, categories, administrators, f
 
 
-# {687986481: {'Имя': 'Никита', 'Фамилия': 'Саркисов', 'Телефон': '+375256910740', 'Начало Работы': '25.09.2022',
-# 'Окончание Работы': None, 'Уровень доступа': 1}}
+def update(case):
+    with con:
+        if case == "Обновить администраторов":
+            administrators = con.execute("SELECT * FROM Администраторы")
+            for information in administrators.fetchall():
+                if "Администратор" not in dict_administrators.keys():
+                    dict_administrators["Администратор"] = {
+                        information[7]: {"Имя": information[1], "Фамилия": information[2], "Телефон": information[3],
+                                         "Начало Работы": information[4], "Окончание Работы": information[5],
+                                         "Уровень доступа": information[6]}}
+                else:
+                    dict_administrators["Администратор"].update(
+                        {information[7]: {"Имя": information[1], "Фамилия": information[2], "Телефон": information[3],
+                                          "Начало Работы": information[4], "Окончание Работы": information[5],
+                                          "Уровень доступа": information[6]}})
+        elif case == "Обновить категории":
+            menu = con.execute("SELECT Название FROM 'Разделы Меню'")
+            menu_categories = []
+            for categories in menu.fetchall():
+                menu_categories.append(categories[0])
+            dict_users["Категории Меню"] = menu_categories
+
+
 def admin_panel(case, user_id, index):
     if case == "Панель Администраторов":
         panel = InlineKeyboardMarkup()
@@ -135,7 +142,7 @@ def admin_panel(case, user_id, index):
         back_button = InlineKeyboardButton("Назад", callback_data=json.dumps([0, "back"]))
         if dict_administrators['Администратор'][user_id]["Уровень доступа"] == 1:
             position_settings.add(change_name, change_description, change_image, change_cost, row_width=1)
-        elif check_position == "доступен":
+        if check_position == "доступен":
             position_settings.add(stop_position)
         elif check_position == "не доступен":
             position_settings.add(start_position)
@@ -144,12 +151,33 @@ def admin_panel(case, user_id, index):
 
     if case == "Настройка администраторов":
         administrators_configuration = InlineKeyboardMarkup(row_width=1)
-        create_administrator = InlineKeyboardButton("Добавление", callback_data=json.dumps([0, "add_admin", 0]))
-        modify_administrator = InlineKeyboardButton("Изменение", callback_data=json.dumps([0, "modify_admin", 0]))
-        delete_administrator = InlineKeyboardButton("Удаление", callback_data=json.dumps([0, "delete_admin", 0]))
+        create_administrator = InlineKeyboardButton("Добавление", callback_data=json.dumps([0, "add_admin"]))
+        modify_administrator = InlineKeyboardButton("Изменение", callback_data=json.dumps([0, "modify_admin"]))
+        delete_administrator = InlineKeyboardButton("Удаление", callback_data=json.dumps([0, "delete_admin"]))
         back = InlineKeyboardButton("Назад", callback_data=json.dumps([0, "settings"]))
         administrators_configuration.add(create_administrator, modify_administrator, delete_administrator, back)
         return administrators_configuration
+
+    if case == "Добавление администраторов":
+        create_administrators = InlineKeyboardMarkup(row_width=2)
+        admin_id = InlineKeyboardButton("ID телеграм", callback_data=json.dumps([0, "new_id"]))
+        admin_name = InlineKeyboardButton("Имя", callback_data=json.dumps([0, "new_name"]))
+        admin_surname = InlineKeyboardButton("Фамилия", callback_data=json.dumps([0, "new_surname"]))
+        admin_telephone = InlineKeyboardButton("Телефон", callback_data=json.dumps([0, "new_telephone"]))
+        admin_work_begin = InlineKeyboardButton("Начало работы",
+                                                callback_data=json.dumps([0, "new_work_start"]))
+        admin_work_end = InlineKeyboardButton("Окончание Работы",
+                                              callback_data=json.dumps([0, "new_work_end"]))
+        admin_rights = InlineKeyboardButton("Уровень доступа", callback_data=json.dumps([0, "new_rights"]))
+        create_administrators.add(admin_id, admin_name, admin_surname, admin_telephone, admin_work_begin,
+                                  admin_work_end, admin_rights)
+        if 'Настройка администраторов' in dict_administrators['Администратор'][user_id].keys():
+            if 'Добавление' != dict_administrators['Администратор'][user_id]['Настройка администраторов']:
+                cancel_button = InlineKeyboardButton("Отменить",
+                                                     callback_data=json.dumps([0, "cancel_creation"]))
+                save_button = InlineKeyboardButton("Сохранить", callback_data=json.dumps([0, "save_creation"]))
+                create_administrators.row(cancel_button, save_button)
+        return create_administrators
 
     if case == "Изменение администраторов":
         modify_administrators = InlineKeyboardMarkup(row_width=1)
@@ -159,19 +187,13 @@ def admin_panel(case, user_id, index):
             admin = InlineKeyboardButton(name + " " + surname,
                                          callback_data=json.dumps([0, "modify_in_admin", telegram_id]))
             modify_administrators.add(admin)
+        back = InlineKeyboardButton("Назад", callback_data=json.dumps([0, "back_from_modifying"]))
+        modify_administrators.add(back)
         return modify_administrators
 
-    if case == "Удаление администраторов":
-        delete_administrators = InlineKeyboardMarkup(row_width=1)
-        for telegram_id in dict_administrators["Администратор"].keys():
-            name = dict_administrators["Администратор"][telegram_id]['Имя']
-            surname = dict_administrators["Администратор"][telegram_id]['Фамилия']
-            delete_administrators.add(InlineKeyboardButton(name + " " + surname,
-                                                           callback_data=json.dumps([0, "delete_admin", telegram_id])))
-        return delete_administrators
     if case == "Настройка администратора":
         telegram_id = index
-        admin_configuration = InlineKeyboardMarkup(row_width=1)
+        admin_configuration = InlineKeyboardMarkup(row_width=2)
         admin_name = InlineKeyboardButton("Имя", callback_data=json.dumps([0, "admin_name", telegram_id]))
         admin_surname = InlineKeyboardButton("Фамилия", callback_data=json.dumps([0, "admin_surname", telegram_id]))
         admin_telephone = InlineKeyboardButton("Телефон", callback_data=json.dumps([0, "admin_telephone", telegram_id]))
@@ -182,7 +204,31 @@ def admin_panel(case, user_id, index):
         admin_rights = InlineKeyboardButton("Уровень доступа", callback_data=json.dumps([0, "rights", telegram_id]))
         admin_configuration.add(admin_name, admin_surname, admin_telephone, admin_work_begin,
                                 admin_work_end, admin_rights)
+        if 'Изменение' != dict_administrators['Администратор'][user_id]['Настройка администраторов']:
+            cancel_button = InlineKeyboardButton("Отменить",
+                                                 callback_data=json.dumps([0, "cancel_changes", telegram_id]))
+            save_button = InlineKeyboardButton("Сохранить", callback_data=json.dumps([0, "save_changes", telegram_id]))
+            admin_configuration.row(cancel_button, save_button)
         return admin_configuration
+
+    if case == "Удаление администраторов":
+        delete_administrators = InlineKeyboardMarkup(row_width=1)
+        for telegram_id in dict_administrators["Администратор"].keys():
+            name = dict_administrators["Администратор"][telegram_id]['Имя']
+            surname = dict_administrators["Администратор"][telegram_id]['Фамилия']
+            delete_administrators.add(InlineKeyboardButton(name + " " + surname,
+                                                           callback_data=json.dumps([0, "delete", telegram_id])))
+        back = InlineKeyboardButton("Назад", callback_data=json.dumps([0, "back_from_deleting"]))
+        delete_administrators.add(back)
+        return delete_administrators
+
+    if case == "Подтверждение удаления":
+        telegram_id = index
+        confirmation = InlineKeyboardMarkup(row_width=2)
+        yes_button = InlineKeyboardButton("Да", callback_data=json.dumps([0, "Yes", telegram_id]))
+        no_button = InlineKeyboardButton("Нет", callback_data=json.dumps([0, "No", telegram_id]))
+        confirmation.add(no_button, yes_button)
+        return confirmation
     # if case == "Статистика":
     # if case == "История":
 
@@ -640,7 +686,38 @@ def start(message):
             del dict_administrators['Администратор'][user_id]["Изменение в позиции"]
             del dict_administrators['Администратор'][user_id]["Операция"]
             bot.send_message(user_id, text="Данные внесены успешно")
-        # elif "Настройка администраторов" in dict_administrators['Администратор'][user_id].keys():
+        elif "Настройка администраторов" in dict_administrators['Администратор'][user_id].keys():
+            values = {"ID TG": "Новый ID", "Имя": "Новое Имя", "Фамилия": "Новая Фамилия", "Телефон": "Новый Телефон",
+                      "Начало Работы": "Новая дата начала",
+                      "Окончание Работы": "Новая дата окончания", "Уровень": "Новый уровень"}
+            if "Добавление" != dict_administrators['Администратор'][user_id]["Настройка администраторов"]:
+                if "Добавление" in dict_administrators['Администратор'][user_id]["Настройка администраторов"].keys():
+                    path = dict_administrators['Администратор'][user_id][
+                        "Настройка администраторов"]["Добавление"].copy()
+                    for operation, setting in path.items():
+                        if operation in values.keys() and values[operation] == setting:
+                            new_value = message.text
+                            dict_administrators['Администратор'][user_id]["Настройка администраторов"][
+                                "Добавление"][operation] = new_value
+                    bot.send_message(user_id, text="Данные добавлены сохраните для изменения",
+                                     reply_markup=admin_panel(case="Добавление администраторов", user_id=user_id,
+                                                              index=None))
+
+            if "Изменение" != dict_administrators['Администратор'][user_id]["Настройка администраторов"]:
+                if "Изменение" in dict_administrators['Администратор'][user_id]["Настройка администраторов"].keys():
+                    admin_id = list(dict_administrators['Администратор']
+                                    [user_id]["Настройка администраторов"]["Изменение"].copy())[0]
+                    path = dict_administrators['Администратор'][user_id]["Настройка администраторов"]["Изменение"][
+                        admin_id].copy()
+
+                    for operation, setting in path.items():
+                        if operation in values.keys() and values[operation] == setting:
+                            new_value = message.text
+                            dict_administrators['Администратор'][user_id]["Настройка администраторов"]["Изменение"][
+                                admin_id][operation] = new_value
+                    bot.send_message(user_id, text="Данные добавлены сохраните для изменения",
+                                     reply_markup=admin_panel(case="Настройка администратора", user_id=user_id,
+                                                              index=admin_id))
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -650,7 +727,6 @@ def query_handler(call):
     call.data = json.loads(call.data)
     flag = call.data[0]
     data = []
-
     if len(call.data) > 1:
         data = call.data[1:]
     if flag == 0:
@@ -658,14 +734,19 @@ def query_handler(call):
         order_operations = ["settings", "orders", "in_approve", "accepted_orders", "accept", "complete"]
         position_operations = {"name": "Имя", "description": "Описание", "image": "Картинка", "cost": "Стоимость",
                                "stop": "Не доступен", "start": "доступен", "back": "Назад"}
-        admin_operations = ["admin", "add_admin", "modify_admin", "delete_admin", "modify_in_admin", "delete_admin"]
-        admin_configuration = ["admin_name", "admin_surname", "admin_telephone", "work_start", "work_end", "rights"]
+        admin_operations = ["admin", "add_admin", "modify_admin", "delete_admin", "modify_in_admin",
+                            "back_from_modifying"]
+        admin_creation = ["new_id", "new_name", "new_surname", "new_telephone", "new_start", "new_end", "new_rights",
+                          "cancel_creation", "save_creation"]
+        admin_configuration = ["admin_name", "admin_surname", "admin_telephone", "work_start", "work_end", "rights",
+                               "cancel_changes", "save_changes"]
+        admin_deleting = ["delete", "Yes", "No", "back_from_deleting"]
         operation = data[0]
         if operation == "main_menu":
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   text='📲Выберите интересующий вас раздел',
                                   reply_markup=category(case="Главная клавиатура", user_id=id))
-        if operation in order_operations:
+        elif operation in order_operations:
             if operation == "settings":
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                       text="📲Выберите интересующий вас раздел",
@@ -749,23 +830,23 @@ def query_handler(call):
                 bot.send_message(id, text="Уведомляю пользователя о завершении")
                 bot.send_message(user_id,
                                  text="Ваш заказ выполнен успешно, пожалуйста оцените заказ и оставьте коментарий")
-        if operation == "menu_settings":
+        elif operation == "menu_settings":
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   text="Выберите Категорию из меню",
                                   reply_markup=admin_panel(case="Изменения в меню", user_id=id, index=None))
-        if operation == "category":
+        elif operation == "category":
             index = data[1]
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   text=f"Выберите позицию {dict_users['Категории Меню'][index]}",
                                   reply_markup=admin_panel(case="Позиции", user_id=id, index=index))
-        if operation == "position":
+        elif operation == "position":
             index = data[1]
             position = dict_administrators["Администратор"][id]["Изменения в меню"][index]
             dict_administrators["Администратор"][id].update({"Изменение в позиции": position})
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   text=f"Меню настроек для {position}",
                                   reply_markup=admin_panel(case="Настройка позиции", user_id=id, index=None))
-        if operation in position_operations.keys():
+        elif operation in position_operations.keys():
             position = dict_administrators["Администратор"][id]["Изменение в позиции"]
             if operation != "back":
                 dict_administrators["Администратор"][id].update({"Операция": position_operations[operation]})
@@ -773,73 +854,177 @@ def query_handler(call):
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                       text=f"Отправьте новое {position_operations[operation]}")
             else:
-                print(dict_administrators)
                 del dict_administrators["Администратор"][id]["Изменение в позиции"]
                 bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                       text=f"Выберите позицию",
                                       reply_markup=admin_panel(case="Позиции", user_id=id, index=None))
-
-        if operation in admin_operations:
-            text, keyboard = None, None
+        elif operation in admin_operations:
+            text, settings, keyboard = None, None, None
             if operation == "admin":
                 text = "👮‍♀️Панель настройки администраторов"
                 keyboard = admin_panel(case="Настройка администраторов", user_id=id, index=None)
             elif operation == "add_admin":
-                dict_administrators["Администратор"][id].update({"Настройка администраторов": "Добавление"})
-                text = "Введите ID Телеграм аккаунта пользователя"
+                settings = "Добавление"
+                text = "Данные необходимые для ввода\n" + "Обязательные поля: ID, Имя, Фамилия, Уровень Доступа 1 или 2"
+                keyboard = admin_panel(case="Добавление администраторов", user_id=id, index=None)
             elif operation == "modify_admin":
-                dict_administrators["Администратор"][id].update({"Настройка администраторов": "Изменение"})
+                settings = "Изменение"
                 text = "Выберите Администратора для изменения"
                 keyboard = admin_panel(case="Изменение администраторов", user_id=id, index=None)
             elif operation == "delete_admin":
+                settings = "Удаление"
                 text = "Выберите Администратора которого хотите удалить"
                 keyboard = admin_panel(case="Удаление администраторов", user_id=id, index=None)
-                dict_administrators["Администратор"][id].update({"Настройка администраторов": "Удаление"})
             elif operation == "modify_in_admin":
                 telegram_id = data[1]
                 text = "Выберите что нужно изменить"
                 keyboard = admin_panel(case="Настройка администратора", user_id=id, index=telegram_id)
+            elif operation == "back_from_modifying":
+                text = "👮‍♀️Панель настройки администраторов"
+                del dict_administrators["Администратор"][id]["Настройка администраторов"]
+                keyboard = admin_panel(case="Настройка администраторов", user_id=id, index=None)
+            if "Настройка администраторов" not in dict_administrators["Администратор"][id].keys():
+                if settings is not None:
+                    dict_administrators["Администратор"][id].update({"Настройка администраторов": settings})
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   text=text, reply_markup=keyboard)
-        if operation in admin_configuration:
+        elif operation in admin_creation:
+            text, keyboard, changed, new_info = None, None, None, None
+            if operation == "new_id":
+                text = "Введите новый ID"
+                changed, new_info = "ID TG", "Новый ID"
+            elif operation == "new_name":
+                text = "Введите новое Имя"
+                changed, new_info = "Имя", "Новое Имя"
+            elif operation == "new_surname":
+                text = "Введите новую фамилию"
+                changed, new_info = "Фамилия", "Новая Фамилия"
+            elif operation == "new_telephone":
+                text = "Введите новый телефон"
+                changed, new_info = "Телефон", "Новый Телефон"
+            elif operation == "new_start":
+                text = "Введите новую дату поступление на работу"
+                changed, new_info = "Начало Работы", "Новая дата начала"
+            elif operation == "new_end":
+                text = "Введите новую дату увольнения с работы"
+                changed, new_info = "Окончание Работы", "Новая дата окончания"
+            elif operation == "new_rights":
+                changed, new_info = "Уровень", "Новый уровень"
+                text = "Выберите уровень доступа"
+            elif operation == "cancel_creation":
+                del dict_administrators["Администратор"][id]['Настройка администраторов']
+                text = "👮‍♀️Панель настройки администраторов\n" + "Изменения отменены"
+                keyboard = admin_panel(case="Настройка администраторов", user_id=id, index=None)
+            elif operation == "save_creation":
+                path = dict_administrators["Администратор"][id]["Настройка администраторов"]["Добавление"]
+                keys_to_check = ["ID TG", "Имя", "Фамилия", "Уровень"]
+                if all(key in path for key in keys_to_check):
+                    text = "👮‍♀️Панель настройки администраторов\n" + "Данные обновлены успешно"
+                    with con:
+                        con.execute(f"INSERT OR IGNORE INTO Администраторы "
+                                    f"([ID TG], Имя, Фамилия, [Уровень] ) values (?,?,?,?) ",
+                                    [path["ID TG"], path["Имя"], path["Фамилия"], path["Уровень"]])
+                    for information in path.items():
+                        if information[0] not in keys_to_check:
+                            con.execute(f"UPDATE OR IGNORE Администраторы "
+                                        f"SET {information[0]} = '{information[1]}' "
+                                        f"WHERE [ID TG] = {path['ID TG']}")
+                    update(case="Обновить администраторов")
+                    keyboard = admin_panel(case="Настройка администраторов", user_id=id, index=None)
+                else:
+                    text = "Вы ввели не все обязательные поля для ввода\n" \
+                           + "Обязательные поля: ID, Имя, Фамилия, Уровень доступа 1 или 2"
+                    keyboard = admin_panel(case="Добавление администраторов", user_id=id, index=None)
+            if 'Настройка администраторов' in dict_administrators["Администратор"][id].keys():
+                if type(dict_administrators["Администратор"][id]['Настройка администраторов']) is not dict:
+                    change = {"Добавление": {changed: new_info}}
+                    dict_administrators["Администратор"][id]['Настройка администраторов'] = change
+                else:
+                    path = dict_administrators["Администратор"][id]['Настройка администраторов']["Добавление"]
+                    path[changed] = new_info
+            try:
+                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                      text=text, reply_markup=keyboard)
+            except:
+                bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+                bot.send_message(chat_id=call.message.chat.id, text=text, reply_markup=keyboard)
+        elif operation in admin_configuration:
             telegram_id = data[1]
-            text, keyboard = None, None
-            status = dict_administrators["Администратор"][id]["Настройка администраторов"]
+            text, keyboard, changed, new_info = None, None, None, None
             if operation == "admin_name":
                 text = "Введите новое Имя"
-                dict_administrators["Администратор"][id]["Настройка администраторов"].update(
-                    {status: {telegram_id: {"Имя": "Новое Имя"}}})
+                changed, new_info = "Имя", "Новое Имя"
             elif operation == "admin_surname":
                 text = "Введите новую фамилию"
-                dict_administrators["Администратор"][id]["Настройка администраторов"].update(
-                    {status: {telegram_id: {"Фамилия": "Новая Фамилия"}}})
+                changed, new_info = "Фамилия", "Новая Фамилия"
             elif operation == "admin_telephone":
                 text = "Введите новый телефон"
-                dict_administrators["Администратор"][id]["Настройка администраторов"].update(
-                    {status: {telegram_id: {"Телефон": "Новый Телефон"}}})
+                changed, new_info = "Телефон", "Новый Телефон"
             elif operation == "work_start":
                 text = "Введите новую дату поступление на работу"
-                dict_administrators["Администратор"][id]["Настройка администраторов"].update(
-                    {status: {telegram_id: {"Начало Работы": "Новая дата"}}})
+                changed, new_info = "Начало Работы", "Новая дата начала"
             elif operation == "work_end":
                 text = "Введите новую дату увольнения с работы"
-                dict_administrators["Администратор"][id]["Настройка администраторов"].update(
-                    {status: {telegram_id: {"Окончание Работы": "Новая дата"}}})
+                changed, new_info = "Окончание Работы", "Новая дата окончания"
             elif operation == "rights":
-                dict_administrators["Администратор"][id]["Настройка администраторов"].update(
-                    {status: {telegram_id: {"Уровень доступа": "Новый уровень"}}})
+                changed, new_info = "Уровень", "Новый уровень"
                 text = "Выберите уровень доступа"
-                keyboard = admin_panel(case="Выбор доступа", user_id=id, index=telegram_id)
+            elif operation == "save_changes":
+                text = "👮‍♀️Панель настройки администраторов\n" + "Данные обновлены успешно"
+                path = dict_administrators["Администратор"][id]["Настройка администраторов"]["Изменение"]
+                new_info = path[telegram_id].items()
+                for information in new_info:
+                    with con:
+                        con.execute(f"UPDATE OR IGNORE Администраторы "
+                                    f"SET {information[0]} = '{information[1]}' "
+                                    f"WHERE [ID TG] = {telegram_id}")
+                update(case="Обновить администраторов")
+                keyboard = admin_panel(case="Настройка администраторов", user_id=id, index=None)
+                del dict_administrators["Администратор"][id]['Настройка администраторов']
+            elif operation == "cancel_changes":
+                del dict_administrators["Администратор"][id]['Настройка администраторов']
+                text = "👮‍♀️Панель настройки администраторов\n" + "Изменения отменены"
+                keyboard = admin_panel(case="Настройка администраторов", user_id=id, index=None)
+            if 'Настройка администраторов' in dict_administrators["Администратор"][id].keys():
+                if type(dict_administrators["Администратор"][id]['Настройка администраторов']) is not dict:
+                    change = {"Изменение": {telegram_id: {changed: new_info}}}
+                    dict_administrators["Администратор"][id]['Настройка администраторов'] = change
+                else:
+                    path = dict_administrators["Администратор"][id]['Настройка администраторов']["Изменение"]
+                    path[telegram_id][changed] = new_info
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  text=text, reply_markup=keyboard)
+        elif operation in admin_deleting:
+            text, keyboard, telegram_id = None, None, None
+            if len(data) > 1:
+                telegram_id = data[1]
+            if operation == "delete":
+                text = "Вы уверены?"
+                keyboard = admin_panel(case="Подтверждение удаления", user_id=id, index=telegram_id)
+            elif operation == "back_from_deleting":
+                text = "👮‍♀️Панель настройки администраторов"
+                keyboard = admin_panel(case="Настройка администраторов", user_id=id, index=None)
+            elif operation == "Yes":
+                with con:
+                    con.execute(f"DELETE FROM Администраторы "
+                                f"WHERE [ID TG] = {telegram_id} ")
+                text = "Операция Выполнена успешно"
+                del dict_administrators["Администратор"][telegram_id]
+                update(case="Обновить администраторов")
+                keyboard = admin_panel(case="Удаление администраторов", user_id=id, index=None)
+            elif operation == "No":
+                text = "Выберите Администратора которого хотите удалить"
+                keyboard = admin_panel(case="Удаление администраторов", user_id=id, index=None)
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   text=text, reply_markup=keyboard)
 
-    if flag == 1:
+    elif flag == 1:
         index = data[0]
         bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                               text="Выбирайте",
                               reply_markup=products(dict_users["Категории Меню"][index], id))
 
-    if flag == 2:
+    elif flag == 2:
         operation = data[0]
         if operation == "menu":
             try:
@@ -885,7 +1070,7 @@ def query_handler(call):
             dict_users.update({id: {"Телефон": None}})
             bot.send_message(id, text="Введите номер телефона\nВ формате: +375251234567")
 
-    if flag == 3:
+    elif flag == 3:
         count, case, group_id, group_el, operation = data[0], data[1], data[2], data[3], data[4]
         configuration = ["-", "+", "*"]
         if operation in configuration:
@@ -928,7 +1113,7 @@ def query_handler(call):
                                  text=text,
                                  reply_markup=cart_processing(case="show", user_id=id))
 
-    if flag == 4:
+    elif flag == 4:
         operation = data[0]
         index = 0
         if len(data) > 1:
@@ -995,7 +1180,7 @@ def query_handler(call):
             bot.send_message(chat_id=id, text="Как желаете получить заказ?",
                              reply_markup=order_accepting(case="delivery", chat_id=id))
 
-    if flag == 5:
+    elif flag == 5:
         operation = data[0]
         case, text = "", ""
         if "Оформление" not in dict_users[id].keys() or dict_users[id]["Оформление"] is None:
@@ -1056,5 +1241,7 @@ def query_handler(call):
             bot.edit_message_text(chat_id=id, message_id=call.message.message_id, text=text)
 
 
+update(case="Обновить категории")
+update(case="Обновить администраторов")
 print("Telegram started successfully")
 bot.infinity_polling()
