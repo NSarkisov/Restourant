@@ -19,15 +19,15 @@ with open("Config.json") as f:
 bot = telebot.TeleBot(Token)
 con = sl.connect(database, check_same_thread=False)
 dict_users = {}
-dict_administrators = {}
+dict_administrators = {"Администратор": {}, "Заказы": {}, "Принятые заказы": {}}
 with con:
     administrators = con.execute("SELECT * FROM Администраторы")
     # (1, 'Никита', 'Саркисов', '+375256910740', '25.09.2022', None, 1, 687986481)
     for information in administrators.fetchall():
-        dict_administrators.update(
+        dict_administrators["Администратор"] = \
             {information[7]: {"Имя": information[1], "Фамилия": information[2], "Телефон": information[3],
                               "Начало Работы": information[4], "Окончание Работы": information[5],
-                              "Уровень доступа": information[6]}})
+                              "Уровень доступа": information[6]}}
     menu = con.execute("SELECT Название FROM 'Разделы Меню'")
     menu_categories = []
     for categories in menu.fetchall():
@@ -38,7 +38,7 @@ with con:
 
 # {687986481: {'Имя': 'Никита', 'Фамилия': 'Саркисов', 'Телефон': '+375256910740', 'Начало Работы': '25.09.2022',
 # 'Окончание Работы': None, 'Уровень доступа': 1}}
-def admin_panel(case, user_id):
+def admin_panel(case, user_id, index):
     if case == "Панель Администраторов":
         panel = InlineKeyboardMarkup()
         orders = InlineKeyboardButton("📋Заказы", callback_data=json.dumps([0, "orders"]))
@@ -46,22 +46,143 @@ def admin_panel(case, user_id):
         admin_settings = InlineKeyboardButton("⚙️Настройка администраторов", callback_data=json.dumps([0, "admin"]))
         statistics = InlineKeyboardButton("📈Статистика", callback_data=json.dumps([0, "statistics"]))
         history = InlineKeyboardButton("📆История", callback_data=json.dumps([0, "history"]))
+        main_menu = InlineKeyboardButton("🏠Назад", callback_data=json.dumps([0, "main_menu"]))
         panel.add(orders, menu_settings, row_width=1)
-        if dict_administrators[user_id]["Уровень доступа"] == 1:
+        if dict_administrators["Администратор"][user_id]["Уровень доступа"] == 1:
             panel.add(admin_settings)
-        panel.add(statistics, history, row_width=1)
+        panel.add(statistics, history, main_menu, row_width=1)
         return panel
-
+    if case == "Просмотр заказов":
+        state = InlineKeyboardMarkup()
+        in_approve = InlineKeyboardButton("В обработке", callback_data=json.dumps([0, "in_approve"]))
+        accepted_orders = InlineKeyboardButton("Принятые", callback_data=json.dumps([0, "accepted_orders"]))
+        back_button = InlineKeyboardButton("Назад", callback_data=json.dumps([0, "settings"]))
+        state.add(in_approve, accepted_orders, back_button, row_width=1)
+        return state
     if case == "Заказы":
-        #[(44, 'Аджабсандали', 1, 16.7, 16.7, '2023-09-25 17:46:43'),
-        # (45, 'Салат -микс с цыплёнком ', 1, 10.0, 10, '2023-09-25 17:47:03')]
-        orders = InlineKeyboardMarkup()
-        accepted = InlineKeyboardButton("Принять", callback_data=json.dumps([0, "accepted"]))
-        text = "Заказ №:"
-        for information in dict_administrators["Заказы в обработке"]:
-            text += ""
-    # if case == "Изменения в меню":
-    # if case == "Настройки Администраторов":
+        if len(dict_administrators["Заказы"]) > 0:
+            for order_number in dict_administrators["Заказы"]:
+                orders = InlineKeyboardMarkup()
+                text = "Новый Заказ "
+                text += f"№: {order_number}\n\n"
+                for position in dict_administrators['Заказы'][order_number]['Позиции']:
+                    index = dict_administrators['Заказы'][order_number]['Позиции'].index(position) + 1
+                    name, count = position[0], position[2]
+                    text += f"{index}. {name}, кол-во: {count}\n"
+                text += f"\n{dict_administrators['Заказы'][order_number]['Информация'][0]}\n"
+                if dict_administrators['Заказы'][order_number]['Информация'][1] is not None:
+                    text += f"Адрес: {dict_administrators['Заказы'][order_number]['Информация'][1]}\n"
+                text += f"Оплата: {dict_administrators['Заказы'][order_number]['Информация'][3]}\n"
+                text += f"Способ Доставки: {dict_administrators['Заказы'][order_number]['Информация'][4]}\n"
+                text += f"Имя клиента: {dict_administrators['Заказы'][order_number]['Информация'][5]}\n"
+                text += f"Номер для связи: {dict_administrators['Заказы'][order_number]['Информация'][6]}\n"
+                text += f"Итого: {dict_administrators['Заказы'][order_number]['Информация'][2]}.BYN\n"
+                accept = InlineKeyboardButton("Принять", callback_data=json.dumps([0, "accept", order_number]))
+                orders.add(accept, row_width=1)
+                if order_number is list(dict_administrators["Заказы"].keys())[-1]:
+                    back = InlineKeyboardButton("Назад", callback_data=json.dumps([0, "orders", "new_message"]))
+                    orders.add(back)
+                bot.send_message(user_id, text=text, reply_markup=orders)
+        else:
+            bot.send_message(user_id, text="Новых заказов нет")
+
+    if case == "Изменения в меню":
+        categories_for_admin = InlineKeyboardMarkup()
+        for category in dict_users["Категории Меню"]:
+            index = dict_users["Категории Меню"].index(category)
+            categories_for_admin.add(InlineKeyboardButton(category, callback_data=json.dumps([0, "category", index])))
+        categories_for_admin.add(InlineKeyboardButton("Назад", callback_data=json.dumps([0, "settings"])))
+        return categories_for_admin
+    if case == "Позиции":
+        positions_for_admin = InlineKeyboardMarkup()
+        if "Изменения в меню" not in dict_administrators["Администратор"][user_id].keys():
+            selected_category = dict_users["Категории Меню"][index]
+            with con:
+                positions = con.execute(f"SELECT Имя FROM Позиции "
+                                        f"INNER JOIN [Разделы Меню] on Позиции.[ID раздела] = [Разделы Меню].ID "
+                                        f"WHERE [Разделы Меню].Название = '{selected_category}'").fetchall()
+                # [('Бадриджани',), ('Аджабсандали',), ('Ассорти-пхали',), ('Сациви',), ('Сациви из бадриджан',)]
+
+                for position in positions:
+                    if "Изменения в меню" not in dict_administrators["Администратор"][user_id].keys():
+                        dict_administrators["Администратор"][user_id].update({"Изменения в меню": [position[0]]})
+                    else:
+                        dict_administrators["Администратор"][user_id]["Изменения в меню"] += [position[0]]
+                    index = dict_administrators["Администратор"][user_id]["Изменения в меню"].index(position[0])
+                    positions_for_admin.add(InlineKeyboardButton(position[0],
+                                                                 callback_data=json.dumps([0, "position", index])))
+        else:
+            for position in dict_administrators["Администратор"][user_id]["Изменения в меню"]:
+                index = dict_administrators["Администратор"][user_id]["Изменения в меню"].index(position)
+                positions_for_admin.add(InlineKeyboardButton(position,
+                                                             callback_data=json.dumps([0, "position", index])))
+        positions_for_admin.add(InlineKeyboardButton("Назад",
+                                                     callback_data=json.dumps([0, "menu_settings"])))
+        return positions_for_admin
+    if case == "Настройка позиции":
+        # Изменить Имя, Изменить Описание, Изменить фото, Изменить стоимость, Поставить товар на стоп
+        with con:
+            position = dict_administrators["Администратор"][user_id]["Изменение в позиции"]
+            check_position = con.execute(f"SELECT Доступен FROM Позиции "
+                                         f"WHERE Имя = '{position}'").fetchall()[0][0]
+        position_settings = InlineKeyboardMarkup()
+        change_name = InlineKeyboardButton("Изменить имя", callback_data=json.dumps([0, "name"]))
+        change_description = InlineKeyboardButton("Изменить описание", callback_data=json.dumps([0, "description"]))
+        change_image = InlineKeyboardButton("Изменить изображение", callback_data=json.dumps([0, "image"]))
+        change_cost = InlineKeyboardButton("Изменить стоимость", callback_data=json.dumps([0, "cost"]))
+        stop_position = InlineKeyboardButton("Остановить продажу", callback_data=json.dumps([0, "stop"]))
+        start_position = InlineKeyboardButton("Возобновить продажу", callback_data=json.dumps([0, "start"]))
+        back_button = InlineKeyboardButton("Назад", callback_data=json.dumps([0, "back"]))
+        if dict_administrators['Администратор'][user_id]["Уровень доступа"] == 1:
+            position_settings.add(change_name, change_description, change_image, change_cost, row_width=1)
+        elif check_position == "доступен":
+            position_settings.add(stop_position)
+        elif check_position == "не доступен":
+            position_settings.add(start_position)
+        position_settings.add(back_button)
+        return position_settings
+
+    if case == "Настройка администраторов":
+        administrators_configuration = InlineKeyboardMarkup(row_width=1)
+        create_administrator = InlineKeyboardButton("Добавление", callback_data=json.dumps([0, "add_admin", 0]))
+        modify_administrator = InlineKeyboardButton("Изменение", callback_data=json.dumps([0, "modify_admin", 0]))
+        delete_administrator = InlineKeyboardButton("Удаление", callback_data=json.dumps([0, "delete_admin", 0]))
+        back = InlineKeyboardButton("Назад", callback_data=json.dumps([0, "settings"]))
+        administrators_configuration.add(create_administrator, modify_administrator, delete_administrator, back)
+        return administrators_configuration
+
+    if case == "Изменение администраторов":
+        modify_administrators = InlineKeyboardMarkup(row_width=1)
+        for telegram_id in dict_administrators["Администратор"].keys():
+            name = dict_administrators["Администратор"][telegram_id]['Имя']
+            surname = dict_administrators["Администратор"][telegram_id]['Фамилия']
+            admin = InlineKeyboardButton(name + " " + surname,
+                                         callback_data=json.dumps([0, "modify_in_admin", telegram_id]))
+            modify_administrators.add(admin)
+        return modify_administrators
+
+    if case == "Удаление администраторов":
+        delete_administrators = InlineKeyboardMarkup(row_width=1)
+        for telegram_id in dict_administrators["Администратор"].keys():
+            name = dict_administrators["Администратор"][telegram_id]['Имя']
+            surname = dict_administrators["Администратор"][telegram_id]['Фамилия']
+            delete_administrators.add(InlineKeyboardButton(name + " " + surname,
+                                                           callback_data=json.dumps([0, "delete_admin", telegram_id])))
+        return delete_administrators
+    if case == "Настройка администратора":
+        telegram_id = index
+        admin_configuration = InlineKeyboardMarkup(row_width=1)
+        admin_name = InlineKeyboardButton("Имя", callback_data=json.dumps([0, "admin_name", telegram_id]))
+        admin_surname = InlineKeyboardButton("Фамилия", callback_data=json.dumps([0, "admin_surname", telegram_id]))
+        admin_telephone = InlineKeyboardButton("Телефон", callback_data=json.dumps([0, "admin_telephone", telegram_id]))
+        admin_work_begin = InlineKeyboardButton("Начало работы",
+                                                callback_data=json.dumps([0, "work_start", telegram_id]))
+        admin_work_end = InlineKeyboardButton("Окончание Работы",
+                                              callback_data=json.dumps([0, "work_end", telegram_id]))
+        admin_rights = InlineKeyboardButton("Уровень доступа", callback_data=json.dumps([0, "rights", telegram_id]))
+        admin_configuration.add(admin_name, admin_surname, admin_telephone, admin_work_begin,
+                                admin_work_end, admin_rights)
+        return admin_configuration
     # if case == "Статистика":
     # if case == "История":
 
@@ -73,7 +194,7 @@ def category(case, user_id):
         profile = InlineKeyboardButton("🤗Профиль", callback_data=json.dumps([2, "profile"]))
         my_orders = InlineKeyboardButton("📋Мои заказы", callback_data=json.dumps([2, "orders"]))
         hello_board.add(menu, profile, my_orders, row_width=1)
-        if user_id in dict_administrators.keys():
+        if user_id in dict_administrators["Администратор"].keys():
             settings = InlineKeyboardButton("⚙️Настройки", callback_data=json.dumps([0, "settings"]))
             hello_board.add(settings)
         return hello_board
@@ -374,7 +495,7 @@ def location(geodata):
 
 # {687986481: {'Имя': 'Никита', 'Фамилия': 'Саркисов', 'Телефон': '+375256910740', 'Начало Работы': '25.09.2022',
 # 'Окончание Работы': None, 'Уровень доступа': 1}}
-@bot.message_handler(content_types=['text'])
+@bot.message_handler(content_types=['text', 'photo'])
 def start(message):
     user_id = message.from_user.id
     name = message.from_user.first_name
@@ -399,10 +520,10 @@ def start(message):
                                 f'WHERE Имя = "{name}" AND "ID TG" = {user_id}', [sl.Binary(avatar)])
             del searching_user
         if message.text == '/start':
-            if user_id not in dict_users.keys() and user_id not in dict_administrators.keys():
+            if user_id not in dict_users.keys() and user_id not in dict_administrators["Администратор"].keys():
                 bot.send_message(message.chat.id, f"Привет 🤩 {name}!😍\n"
                                                   f"Мы рады приветствовать вас")
-            if user_id in dict_administrators.keys():
+            if user_id in dict_administrators["Администратор"].keys():
                 bot.send_message(message.chat.id, f"Добро пожаловать Администратор 💻{name}!")
 
             bot.send_message(message.chat.id,
@@ -495,6 +616,32 @@ def start(message):
         if finished_order:
             del dict_users[user_id]["Оформление"], dict_users[user_id]["Корзина"]
 
+    if user_id in dict_administrators['Администратор'].keys():
+        if "Изменение в позиции" in dict_administrators['Администратор'][user_id].keys():
+            position = dict_administrators['Администратор'][user_id]["Изменение в позиции"]
+            operation = dict_administrators['Администратор'][user_id]["Операция"]
+            if message.content_type == 'text':
+                new_info = message.text
+                with con:
+                    con.execute(f"UPDATE OR IGNORE Позиции "
+                                f"SET {operation} = '{new_info}' "
+                                f"WHERE Имя = '{position}'")
+            else:
+                photo = message.photo[-1]
+                file_id = photo.file_id
+                file_info = bot.get_file(file_id)
+                file_path = file_info.file_path
+                url = f"https://api.telegram.org/file/bot{Token}/{file_path}"
+                new_info = requests.get(url).content
+                with con:
+                    con.execute(f"UPDATE OR IGNORE Позиции "
+                                f"SET {operation} = ? "
+                                f"WHERE Имя = '{position}' ", [new_info])
+            del dict_administrators['Администратор'][user_id]["Изменение в позиции"]
+            del dict_administrators['Администратор'][user_id]["Операция"]
+            bot.send_message(user_id, text="Данные внесены успешно")
+        # elif "Настройка администраторов" in dict_administrators['Администратор'][user_id].keys():
+
 
 @bot.callback_query_handler(func=lambda call: True)
 def query_handler(call):
@@ -507,26 +654,184 @@ def query_handler(call):
     if len(call.data) > 1:
         data = call.data[1:]
     if flag == 0:
-        opertions = ["settings", "orders", "menu_settings", "admin", "statistics", "history"]
-        opertion = data[0]
-        if opertion == "settings":
+        opertions = ["settings", "orders", "menu_settings", "admin", "statistics", "history", "main_menu"]
+        order_operations = ["settings", "orders", "in_approve", "accepted_orders", "accept", "complete"]
+        position_operations = {"name": "Имя", "description": "Описание", "image": "Картинка", "cost": "Стоимость",
+                               "stop": "Не доступен", "start": "доступен", "back": "Назад"}
+        admin_operations = ["admin", "add_admin", "modify_admin", "delete_admin", "modify_in_admin", "delete_admin"]
+        admin_configuration = ["admin_name", "admin_surname", "admin_telephone", "work_start", "work_end", "rights"]
+        operation = data[0]
+        if operation == "main_menu":
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                  text="Панель администратора",
-                                  reply_markup=admin_panel(case="Панель Администраторов", user_id=id))
-        if opertion == "orders":
-            with con:
-                orders = con.execute(f"SELECT Заказы.ID, Позиции.Имя, [Состав заказа].Количество, Позиции.Стоимость, "
-                                     f"Заказы.Стоимость, Заказы.Время FROM Позиции "
-                                     f"INNER JOIN [Состав заказа] on [Состав заказа].[ID позиции] = Позиции.ID "
-                                     f"INNER JOIN Заказы ON [Состав заказа].[ID заказа] = Заказы.ID "
-                                     f"INNER JOIN Пользователи ON Заказы.[ID Пользователя] = Пользователи.ID "
-                                     f"WHERE Заказы.Состояние = 'Обработка'")
-                for information in orders:
-                    if "Заказы" not in dict_administrators.keys():
-                        dict_administrators.update({"Заказы в обработке": information})
-                    else:
-                        dict_administrators["Заказы в обработке"] += information
-            admin_panel(case="Заказы", user_id=id)
+                                  text='📲Выберите интересующий вас раздел',
+                                  reply_markup=category(case="Главная клавиатура", user_id=id))
+        if operation in order_operations:
+            if operation == "settings":
+                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                      text="📲Выберите интересующий вас раздел",
+                                      reply_markup=admin_panel(case="Панель Администраторов", user_id=id, index=None))
+            if operation == "orders":
+
+                if len(data) == 1:
+                    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                          text="Выберите какие заказы вы желаете посмотреть",
+                                          reply_markup=admin_panel(case="Просмотр заказов", user_id=id, index=None))
+                else:
+                    bot.send_message(chat_id=call.message.chat.id, text="Выберите какие заказы вы желаете посмотреть",
+                                     reply_markup=admin_panel(case="Просмотр заказов", user_id=id, index=None))
+            if operation == "in_approve":
+                with con:
+                    orders = {}
+                    order_information = con.execute("SELECT Заказы.ID, Время, Адресс, Стоимость, Оплата, "
+                                                    "Доставка, Имя, Телефон FROM Заказы INNER JOIN "
+                                                    "Пользователи ON Заказы.[ID Пользователя] = Пользователи.ID "
+                                                    "WHERE Состояние = 'Обработка'").fetchall()
+                    for order in order_information:
+                        orders.update({order[0]: {"Информация": order[1:]}})
+
+                    for order_number in orders.keys():
+                        positions = con.execute(f"SELECT Позиции.Имя, Позиции.Стоимость, [Состав заказа].Количество "
+                                                f"FROM [Состав заказа] INNER JOIN Позиции ON "
+                                                f"[Состав заказа].[ID позиции] = Позиции.ID "
+                                                f"WHERE [Состав заказа].[ID заказа] = {order_number}").fetchall()
+                        orders[order_number].update({"Позиции": positions})
+                    for order_number in orders:
+                        if order_number not in dict_administrators["Заказы"].keys():
+                            dict_administrators["Заказы"].update({order_number: orders[order_number]})
+                admin_panel(case="Заказы", user_id=id, index=None)
+            if operation == "accepted_orders":
+                if len(dict_administrators["Принятые заказы"]) > 0:
+                    for order_number in dict_administrators["Принятые заказы"]:
+                        orders = InlineKeyboardMarkup()
+                        text = "Новый Заказ "
+                        text += f"№: {order_number}\n\n"
+                        for position in dict_administrators['Принятые заказы'][order_number]['Позиции']:
+                            index = dict_administrators['Принятые заказы'][order_number]['Позиции'].index(position) + 1
+                            name, count = position[0], position[2]
+                            text += f"{index}. {name}, кол-во: {count}\n"
+                        text += f"\n{dict_administrators['Принятые заказы'][order_number]['Информация'][0]}\n"
+                        if dict_administrators['Принятые заказы'][order_number]['Информация'][1] is not None:
+                            text += f"Адрес: {dict_administrators['Принятые заказы'][order_number]['Информация'][1]}\n"
+                        text += f"Оплата: {dict_administrators['Принятые заказы'][order_number]['Информация'][3]}\n"
+                        text += f"Способ Доставки: {dict_administrators['Принятые заказы'][order_number]['Информация'][4]}\n"
+                        text += f"Имя клиента: {dict_administrators['Принятые заказы'][order_number]['Информация'][5]}\n"
+                        text += f"Номер для связи: {dict_administrators['Принятые заказы'][order_number]['Информация'][6]}\n"
+                        text += f"Итого: {dict_administrators['Принятые заказы'][order_number]['Информация'][2]}.BYN\n"
+                        complete = InlineKeyboardButton("Завершить",
+                                                        callback_data=json.dumps([0, "complete", order_number]))
+                        orders.add(complete, row_width=1)
+                        if order_number is list(dict_administrators["Принятые заказы"].keys())[-1]:
+                            back = InlineKeyboardButton("Назад", callback_data=json.dumps([0, "orders", "new_message"]))
+                            orders.add(back)
+                        bot.send_message(id, text=text, reply_markup=orders)
+                else:
+                    bot.send_message(id, text="Еще нет принятых заказов")
+            if operation == "accept":
+                order_number = data[1]
+                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                      text="Заказ принят", reply_markup=None)
+                order = dict_administrators["Заказы"][order_number]
+                dict_administrators["Принятые заказы"].update({order_number: order})
+                del dict_administrators["Заказы"][order_number]
+                with con:
+                    con.execute(f"UPDATE OR IGNORE Заказы "
+                                f"SET Состояние = 'Готовится' WHERE ID = {order_number}")
+            if operation == "complete":
+                # {48: {'Информация': ('2023-09-26 16:17:12', None, 47, 'Картой', 'Самовывоз', 'Никита', '+375256910740'),
+                # 'Позиции': [('Аджабсандали', 16.7, 2), ('Бадриджани', 13.6, 1)]}}
+                order_number = data[1]
+                with con:
+                    user_id = con.execute(f"SELECT [ID TG] FROM Пользователи "
+                                          f"INNER JOIN Заказы ON Заказы.[ID Пользователя] = Пользователи.ID "
+                                          f"WHERE Заказы.ID = {order_number}").fetchall()[0][0]
+                    con.execute(f"UPDATE OR IGNORE Заказы "
+                                f"SET Состояние = 'Выполнен' WHERE ID = {order_number}")
+                bot.send_message(id, text="Уведомляю пользователя о завершении")
+                bot.send_message(user_id,
+                                 text="Ваш заказ выполнен успешно, пожалуйста оцените заказ и оставьте коментарий")
+        if operation == "menu_settings":
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  text="Выберите Категорию из меню",
+                                  reply_markup=admin_panel(case="Изменения в меню", user_id=id, index=None))
+        if operation == "category":
+            index = data[1]
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  text=f"Выберите позицию {dict_users['Категории Меню'][index]}",
+                                  reply_markup=admin_panel(case="Позиции", user_id=id, index=index))
+        if operation == "position":
+            index = data[1]
+            position = dict_administrators["Администратор"][id]["Изменения в меню"][index]
+            dict_administrators["Администратор"][id].update({"Изменение в позиции": position})
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  text=f"Меню настроек для {position}",
+                                  reply_markup=admin_panel(case="Настройка позиции", user_id=id, index=None))
+        if operation in position_operations.keys():
+            position = dict_administrators["Администратор"][id]["Изменение в позиции"]
+            if operation != "back":
+                dict_administrators["Администратор"][id].update({"Операция": position_operations[operation]})
+
+                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                      text=f"Отправьте новое {position_operations[operation]}")
+            else:
+                print(dict_administrators)
+                del dict_administrators["Администратор"][id]["Изменение в позиции"]
+                bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                      text=f"Выберите позицию",
+                                      reply_markup=admin_panel(case="Позиции", user_id=id, index=None))
+
+        if operation in admin_operations:
+            text, keyboard = None, None
+            if operation == "admin":
+                text = "👮‍♀️Панель настройки администраторов"
+                keyboard = admin_panel(case="Настройка администраторов", user_id=id, index=None)
+            elif operation == "add_admin":
+                dict_administrators["Администратор"][id].update({"Настройка администраторов": "Добавление"})
+                text = "Введите ID Телеграм аккаунта пользователя"
+            elif operation == "modify_admin":
+                dict_administrators["Администратор"][id].update({"Настройка администраторов": "Изменение"})
+                text = "Выберите Администратора для изменения"
+                keyboard = admin_panel(case="Изменение администраторов", user_id=id, index=None)
+            elif operation == "delete_admin":
+                text = "Выберите Администратора которого хотите удалить"
+                keyboard = admin_panel(case="Удаление администраторов", user_id=id, index=None)
+                dict_administrators["Администратор"][id].update({"Настройка администраторов": "Удаление"})
+            elif operation == "modify_in_admin":
+                telegram_id = data[1]
+                text = "Выберите что нужно изменить"
+                keyboard = admin_panel(case="Настройка администратора", user_id=id, index=telegram_id)
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  text=text, reply_markup=keyboard)
+        if operation in admin_configuration:
+            telegram_id = data[1]
+            text, keyboard = None, None
+            status = dict_administrators["Администратор"][id]["Настройка администраторов"]
+            if operation == "admin_name":
+                text = "Введите новое Имя"
+                dict_administrators["Администратор"][id]["Настройка администраторов"].update(
+                    {status: {telegram_id: {"Имя": "Новое Имя"}}})
+            elif operation == "admin_surname":
+                text = "Введите новую фамилию"
+                dict_administrators["Администратор"][id]["Настройка администраторов"].update(
+                    {status: {telegram_id: {"Фамилия": "Новая Фамилия"}}})
+            elif operation == "admin_telephone":
+                text = "Введите новый телефон"
+                dict_administrators["Администратор"][id]["Настройка администраторов"].update(
+                    {status: {telegram_id: {"Телефон": "Новый Телефон"}}})
+            elif operation == "work_start":
+                text = "Введите новую дату поступление на работу"
+                dict_administrators["Администратор"][id]["Настройка администраторов"].update(
+                    {status: {telegram_id: {"Начало Работы": "Новая дата"}}})
+            elif operation == "work_end":
+                text = "Введите новую дату увольнения с работы"
+                dict_administrators["Администратор"][id]["Настройка администраторов"].update(
+                    {status: {telegram_id: {"Окончание Работы": "Новая дата"}}})
+            elif operation == "rights":
+                dict_administrators["Администратор"][id]["Настройка администраторов"].update(
+                    {status: {telegram_id: {"Уровень доступа": "Новый уровень"}}})
+                text = "Выберите уровень доступа"
+                keyboard = admin_panel(case="Выбор доступа", user_id=id, index=telegram_id)
+            bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                  text=text, reply_markup=keyboard)
 
     if flag == 1:
         index = data[0]
