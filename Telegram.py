@@ -625,8 +625,7 @@ def start(message):
     user_id = message.from_user.id
     name = message.from_user.first_name
     side_menu = ['/start', '/menu', '/card', '/orders']
-    print("-----------------------------------")
-    print(message)
+
     if message.text in side_menu:
         with con:  # Поиск пользователя в Базе, если его нет запись возможной о нём информации
             searching_user = con.execute('SELECT ID, Имя, "ID TG" FROM Пользователи WHERE "ID TG" = ?', [user_id])
@@ -739,7 +738,9 @@ def start(message):
 
         if text != "":
             bot.send_message(chat_id=user_id, text=text, reply_markup=hide_keyboard)
-            bot.send_message(chat_id=-4022782368, text=text, reply_markup=hide_keyboard)
+            print("сработало отправка пользователю")
+            bot.send_message(chat_id=-4022782368, text=text)
+            print("Сработало отправка в группу")
         if finished_order:
             del dict_users[user_id]["Оформление"], dict_users[user_id]["Корзина"]
 
