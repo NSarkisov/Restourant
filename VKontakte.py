@@ -9,7 +9,6 @@ import requests
 from PIL import Image
 from io import BytesIO
 from datetime import datetime
-from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 import os
 
@@ -211,12 +210,22 @@ def collect_bag(case, user_id):
                     keyboard[i].add_callback_button(label='+', color=VkKeyboardColor.PRIMARY,
                                 payload={"type": "корзина", "name": ">>", "data":[index, i]})
                     keyboard[i].add_callback_button(label= 'X', color=VkKeyboardColor.PRIMARY,
-                                            payload={"type": "корзина", "name": "del", "data": [index, i]})
+                                                payload={"type": "корзина", "name": "del", "data": [index, i]})
                     keyboard[i].add_line()
             keyboard[i].add_callback_button(label= 'Корзина', color=VkKeyboardColor.PRIMARY,
                                     payload={"type": "корзина", "name": "Назад"})
             step += 3      
     is_slider(keyboard, 'change')
+    
+def reviews_keyboard(user_id):
+    review_keyboard = VkKeyboard(**settings2)   
+    review_keyboard.add_callback_button(label='Отзыв к заказу', color=VkKeyboardColor.PRIMARY,
+                                payload={"type": "reviews", "name": "Заказ"})
+    review_keyboard.add_callback_button(label='Отзыв к блюду', color=VkKeyboardColor.PRIMARY,
+                                payload={"type": "reviews", "name": "Блюдо"})
+    
+    return review_keyboard
+    
         
 def checkout(case, user_id):
     
@@ -261,7 +270,10 @@ def checkout(case, user_id):
         return keyboardconfirmation
     
 def save_checklist(user_id):
-    phone = user[user_id]['checkout']['Телефон']
+    if "Телефон" in user[user_id]["checkout"].keys():
+        phone = user[user_id]["checkout"]["Телефон"]
+    else:
+        phone = None
     address = ''
     if user[user_id]['checkout']['Способ доставки'] == 'Доставка':
         address = user[user_id]['checkout']['Улица'] + ',' + user[user_id]['checkout']['Дом'] + ',' + user[user_id]['checkout']['Квартира']
@@ -271,11 +283,11 @@ def save_checklist(user_id):
     delivery = user[user_id]['checkout']['Способ доставки']
     delivery_time = datetime.now().replace(microsecond=0)
     with con:
-    # Вставка номера телефона в бд
-        con.execute('UPDATE OR IGNORE Пользователи SET Телефон = ? WHERE "ID Vk" = ?', (phone, user_id))
-        print('hello')
+        if phone is not None: 
+            con.execute('UPDATE OR IGNORE Пользователи SET Телефон = ? WHERE "ID Vk" = ?', (phone, user_id))
+            print('hello')
         con.execute('INSERT OR IGNORE INTO Заказы ("ID Пользователя", Время, Адресс, Стоимость, Оплата, Доставка) VALUES ((SELECT ID FROM Пользователи WHERE [ID Vk] = ?),?,?,?,?,?)', [user_id, delivery_time, address, price, payment, delivery])
-        print('hi')
+        
         for good in user[user_id]['bag']:
             amount = good[1]
             name = good[0]
@@ -319,10 +331,9 @@ def check_info(user_id):
     return text
 
 def my_orders(user_id):
-    
     with con:
         my_orders = con.execute(f"SELECT Заказы.ID, Позиции.Имя, [Состав заказа].Количество, Позиции.Стоимость, "
-                    f"Заказы.Стоимость, Заказы.Время FROM Позиции "
+                    f"Заказы.Стоимость, Заказы.Время, Заказы.Состояние FROM Позиции "
                     f"INNER JOIN [Состав заказа] on [Состав заказа].[ID позиции] = Позиции.ID "
                     f"INNER JOIN Заказы ON [Состав заказа].[ID заказа] = Заказы.ID "
                     f"INNER JOIN Пользователи ON Заказы.[ID Пользователя] = Пользователи.ID "
@@ -330,65 +341,30 @@ def my_orders(user_id):
         orders = {}
         for good in my_orders.fetchall():
             if good[0] not in orders.keys():
-                orders.update({good[0]:{'time':good[5], 'positions':[list(good[1:5])]}})
+                orders.update({good[0]:{'time':good[5], 'state': good[6],'positions':[list(good[1:5])]}})
             else:
                 orders[good[0]]['positions'] += [list(good[1:5])]
-    return orders
+        text = 'Ваши заказы: '
+        for order in orders:
+            order_time = orders[order]['time']
+            order_state = orders[order]['state']
+            num = 1
+            result = 0
+            text += f'Заказ №{order} \n'
+            text += f'Оформлен {order_time}\n'
+            text += f'Состояние: {order_state}\n'
+            for product in orders[order]['positions']:
+                name = product[0]
+                amount = product[1]
+                price = product[2]
+                total = product[3]
+                text+= f'{num}. {name}, {amount} шт., сумма: {price} BYN\n'
+                num +=1
+            result += total 
+            text += f'ИТОГО: {result} BYN \n\n' 
+    return text          
+           
 
-def send_pdf_file(user_id, order_data):
-    # Создаем объект canvas для создания PDF
-    pdf_canvas = canvas.Canvas("orders.pdf", pagesize=letter)
-    # Настройки шрифта и размера текста
-    pdf_canvas.setFont("Helvetica", 8)
-
-    # Переменные для управления позицией текста
-    x = 50
-    y = 850
-
-    # Начинаем отрисовку данных о заказе
-    for order_id, items in order_data.items():
-        print(f'order_id = {order_id}')
-        print(f'items = {items}')
-        # Выводим информацию о заказе
-        pdf_canvas.drawString(x, y, f"Заказ #{order_id}:")
-        y -= 20
-        text = ''
-        num = 1
-        result = 0
-        for product in items['positions']:
-            # Выводим информацию о каждом товаре в заказе
-            name = product[0]
-            amount = product[1]
-            price = product[2]
-            total = product[3]
-            text+= f'{num}. {name}, {amount} шт., сумма: {price} BYN\n'
-            num +=1
-        result += total 
-        text += f'ИТОГО: {result} BYN \n\n' 
-            # product_name, quantity, price, total = item
-            # line = f"{product_name} x{quantity}: {price} {total} руб."
-        pdf_canvas.drawString(x, y, text)
-        y -= 15
-
-        # Добавляем отступ перед следующим заказом
-        y -= 10
-    # Сохраняем и закрываем PDF
-    pdf_canvas.save()
-    temp_file = BytesIO(text)
-
-# Отправка файла пользователю
-    upload = VkUpload(vk_session)
-    doc = upload.document_message('orders.pdf', title='Orders')
-    attachment = f"doc{doc['doc']['owner_id']}_{doc['doc']['id']}"
-    # Получаем информацию о загруженном документе
-    
-    vk.messages.send(peer_id=user_id, 
-                     random_id=get_random_id(),
-                     attachment= attachment,
-                     message='Ваши заказы:')
-    
-    os.remove(orders.pdf)
-    
     
 print("Ready")
 
@@ -452,7 +428,17 @@ for event in longpoll.listen():
                             text = "Укажите номер квартиры"
                         elif "Квартира" not in user[event.obj.message['from_id']]['checkout'].keys():
                             user[event.obj.message['from_id']]['checkout'].update({"Квартира": event.obj.message['text']})
-                            text = "Укажите номер Телефона"
+                            id = event.obj.message['from_id']
+                            with con:
+                                phone = con.execute(f'SELECT Телефон FROM Пользователи WHERE "ID Vk" = {id}')
+                                phone = phone.fetchall()[0][0]
+                                if phone is not None:
+                                    save_checklist(event.obj.message['from_id'])
+                                    text = check_info(event.obj.message['from_id'])
+                                    finished_order = True
+                                else:
+                                    text = "Укажите номер Телефона"
+                            print(user[event.obj.message['from_id']])
                         elif "Телефон" not in user[event.obj.message['from_id']]['checkout'].keys():
                             user[event.obj.message['from_id']]['checkout'].update({"Телефон": event.obj.message['text']})
                             save_checklist(event.obj.message['from_id'])
@@ -468,7 +454,17 @@ for event in longpoll.listen():
                     elif user[event.obj.message['from_id']]['checkout']['Способ доставки'] == "В заведении":
                         if "Место" not in user[event.obj.message['from_id']]['checkout'].keys():
                             user[event.obj.message['from_id']]['checkout'].update({"Место": event.obj.message['text']})
-                            text = "Укажите номер телефона"
+                            id = event.obj.message['from_id']
+                            with con:
+                                phone = con.execute(f'SELECT Телефон FROM Пользователи WHERE "ID Vk" = {id}')
+                                phone = phone.fetchall()[0][0]
+                                if phone is not None:
+                                    save_checklist(event.obj.message['from_id'])
+                                    text = check_info(event.obj.message['from_id'])
+                                    finished_order = True
+                                else:
+                                    text = "Укажите номер Телефона"
+                                    
                         elif "Телефон" not in user[event.obj.message['from_id']]['checkout'].keys():
                             user[event.obj.message['from_id']]['checkout'].update({"Телефон": event.obj.message['text']})
                             save_checklist(event.obj.message['from_id']) 
@@ -483,6 +479,25 @@ for event in longpoll.listen():
                             message=text)
                     if finished_order:
                         del user[event.obj.message['from_id']]['checkout'], user[event.obj.message['from_id']]['bag']
+                #{7995642: {'reviews': 'Заказ'}}
+                elif event.obj.message['from_id'] in user.keys() and 'reviews' in user[event.obj.message['from_id']].keys():
+                    text = ''
+                    print(event.obj.message['text'])
+                    if 'Заказ' in user[event.obj.message['from_id']]['reviews']:
+                        num_order = event.obj.message['text']
+                        user[event.obj.message['from_id']]['reviews']['Заказ'] = num_order
+                        print(user)
+                        text = 'Оставить отзыв:'
+                    elif 'Отзыв' not in user[event.obj.message['from_id']]['reviews'].keys():
+                        user[event.obj.message['from_id']]['reviews']['Отзыв'] = event.obj.message['text']
+                        print(user[event.obj.message['from_id']]['reviews'])
+                        text = 'Спасибо за отзыв! Отзыв успешно добавлен.'  
+                if text != "":
+                    vk.messages.send(
+                        user_id=event.obj.message['from_id'],
+                        random_id=get_random_id(),
+                        peer_id=event.obj.message['peer_id'],
+                        message=text)
             except:
                 pass
                     
@@ -513,13 +528,13 @@ for event in longpoll.listen():
                 elif event.obj.message['text'] == "Мои заказы":
                     user_id = event.obj.message['from_id']
                     orders = my_orders(user_id) 
-                    print(orders)
-                    send_pdf_file(user_id, orders)
-                    # vk.messages.send(
-                    #     user_id=event.obj.message['from_id'],
-                    #     random_id=get_random_id(),
-                    #     peer_id=event.obj.message['peer_id'],
-                    #     message= text)     
+                    vk.messages.send(
+                        user_id=event.obj.message['from_id'],
+                        random_id=get_random_id(),
+                        peer_id=event.obj.message['peer_id'],
+                        message= orders,
+                        keyboard = reviews_keyboard(user_id=event.obj.message['from_id']).get_keyboard())  
+                       
                 elif event.obj.message['text'] == 'Самое популярное блюдо':  
                     with con:
                         info = con.execute(f'SELECT Имя, MAX(total_quantity) AS max_total_quantity FROM (SELECT Имя, "ID позиции", SUM(Количество) as total_quantity FROM "Состав заказа" INNER JOIN Позиции ON Позиции.ID = [Состав заказа].[ID позиции] GROUP BY "ID позиции") AS subquery')
@@ -571,12 +586,14 @@ for event in longpoll.listen():
                                 keyboard = reply_menu("Начать").get_keyboard())
                 
             if event.object.payload.get('name') == 'Мои заказы':
-                my_orders(event.object.user_id)
-                # vk.messages.send(
-                #         user_id=event.object.user_id,
-                #         random_id=get_random_id(),
-                #         peer_id=event.obj.peer_id,
-                #         message= text)
+                orders = my_orders(event.object.user_id)
+                vk.messages.send(
+                        user_id=event.object.user_id,
+                        random_id=get_random_id(),
+                        peer_id=event.obj.peer_id,
+                        message= orders,
+                        keyboard = reviews_keyboard(user_id=event.obj.user_id).get_keyboard())
+                
             if event.object.payload.get('name') == 'Профиль':
                 id = event.object.user_id 
                 with con:
@@ -732,7 +749,7 @@ for event in longpoll.listen():
                 index = data[0]
                 amount = user[event.object.user_id]["new_bag"][index][1]
                 amount -= 1
-                if amount >= 0:
+                if amount >= 1:
                     user[event.object.user_id]["new_bag"][index][1] = amount
                     text = check_info(event.object.user_id)
                     collect_bag(case="change", user_id=event.obj.user_id)
@@ -742,9 +759,36 @@ for event in longpoll.listen():
                         peer_id=event.obj.peer_id,
                         message= f'Количество позиций изменено.\n {text}',
                         conversation_message_id=conversation_message_id,
-                        keyboard =keyboard[data[1]].get_keyboard())   
+                        keyboard =keyboard[data[1]].get_keyboard())
+                else:
+                    index = data[0]   #3
+                if index % 3 == 0:
+                    num_keyb = data[1] - 1
+                else:
+                    num_keyb = data[1] 
+                product = user[event.object.user_id]['new_bag'][index][0]
+                del user[event.object.user_id]['new_bag'][index]
+                if num_keyb >= 0:   
+                    text = check_info(event.object.user_id)
+                    collect_bag(case="change", user_id=event.obj.user_id)
+                    response = vk.messages.getConversations(count=1)
+                    conversation_message_id = response['items'][0]['last_message']['conversation_message_id']
+                    vk.messages.edit(
+                        peer_id=event.obj.peer_id,
+                        message= f'Позиция успешно удалена {text}',
+                        conversation_message_id=conversation_message_id,
+                        keyboard =keyboard[num_keyb].get_keyboard()) 
+                else:
+                    vk.messages.send(
+                        user_id=event.obj.user_id,
+                        random_id=get_random_id(),
+                        peer_id=event.obj.peer_id,
+                        message= f'{user_name}, к сожалению корзина пуста. Добавьте позицию!',
+                        keyboard = reply_menu("Начать").get_keyboard()) 
+                       
             if name == '>>':
                 index = data[0]
+                print(index)
                 amount = user[event.object.user_id]["new_bag"][index][1]
                 amount += 1
                 user[event.object.user_id]["new_bag"][index][1] = amount
@@ -759,18 +803,31 @@ for event in longpoll.listen():
                     keyboard =keyboard[data[1]].get_keyboard())    
             
             if name == "del":
-                index = data[0]
+                index = data[0]   #3
+                if index % 3 == 0:
+                    num_keyb = data[1] - 1
+                else:
+                    num_keyb = data[1] 
                 product = user[event.object.user_id]['new_bag'][index][0]
                 del user[event.object.user_id]['new_bag'][index]
-                text = check_info(event.object.user_id)
-                collect_bag(case="change", user_id=event.obj.user_id)
-                response = vk.messages.getConversations(count=1)
-                conversation_message_id = response['items'][0]['last_message']['conversation_message_id']
-                vk.messages.edit(
-                    peer_id=event.obj.peer_id,
-                    message= f'Позиция успешно удалена {text}',
-                    conversation_message_id=conversation_message_id,
-                    keyboard =keyboard[0].get_keyboard())   
+                if num_keyb >= 0:   
+                    text = check_info(event.object.user_id)
+                    collect_bag(case="change", user_id=event.obj.user_id)
+                    response = vk.messages.getConversations(count=1)
+                    conversation_message_id = response['items'][0]['last_message']['conversation_message_id']
+                    vk.messages.edit(
+                        peer_id=event.obj.peer_id,
+                        message= f'Позиция успешно удалена {text}',
+                        conversation_message_id=conversation_message_id,
+                        keyboard =keyboard[num_keyb].get_keyboard()) 
+                else:
+                    vk.messages.send(
+                        user_id=event.obj.user_id,
+                        random_id=get_random_id(),
+                        peer_id=event.obj.peer_id,
+                        message= f'{user_name}, к сожалению корзина пуста. Добавьте позицию!',
+                        keyboard = reply_menu("Начать").get_keyboard()) 
+                    
             if name == "Назад":
                 del user[event.object.user_id]['new_bag']
                 text = check_info(event.object.user_id)
@@ -812,10 +869,12 @@ for event in longpoll.listen():
             if operation == 'способ оплаты':   
                 if name == "Карта": 
                     user[event.obj.user_id]['checkout'].update({"Способ оплаты": "Карта"})
-                    print(user[event.obj.user_id]['checkout'])
                 elif name == "Наличные":    
                     user[event.obj.user_id]['checkout'].update({"Способ оплаты": "Наличные"})
-                    print(user[event.obj.user_id]['checkout'])
+                with con:
+                    phone = con.execute(f'SELECT Телефон FROM Пользователи WHERE "ID Vk" = {event.object.user_id}')
+                    phone = phone.fetchall()[0][0]
+
                 if user[event.obj.user_id]['checkout']['Способ доставки'] == "Доставка":
                     vk.messages.edit(
                         peer_id=event.obj.peer_id,
@@ -824,10 +883,19 @@ for event in longpoll.listen():
                         keyboard = checkout(case="address", user_id = event.object.user_id).get_keyboard())
                 
                 elif user[event.obj.user_id]['checkout']['Способ доставки'] == "Самовывоз":
-                    vk.messages.edit(
-                        peer_id=event.obj.peer_id,
-                        message= "Укажите номер телефона",
-                        conversation_message_id=event.obj.conversation_message_id)
+                    if phone is None:
+                        vk.messages.edit(
+                            peer_id=event.obj.peer_id,
+                            message= "Укажите номер телефона",
+                            conversation_message_id=event.obj.conversation_message_id)
+                    else:
+                        save_checklist(event.object.user_id)
+                        text = check_info(event.object.user_id)
+                        vk.messages.edit(
+                            peer_id=event.obj.peer_id,
+                            message= text,
+                            conversation_message_id=event.obj.conversation_message_id)
+                        del user[event.object.user_id]["checkout"], user[event.object.user_id]["bag"]
                     
                 elif user[event.obj.user_id]['checkout']['Способ доставки'] == "В заведении":
                     vk.messages.edit(
@@ -869,6 +937,22 @@ for event in longpoll.listen():
                             message= "Укажите улицу:",
                             conversation_message_id=event.obj.conversation_message_id,
                             keyboard=reply_menu("Начать").get_keyboard())
+                        
+        elif event.object.payload.get('type') == "reviews": 
+            name = event.object.payload.get('name')
+            print(user)
+            if event.object.user_id not in user.keys() or user[event.object.user_id] is None:
+                user[event.object.user_id] = 'reviews'  
+                print(user)   #{7995642: 'reviews'}
+                #'reviews' not in user[event.object.user_id].keys():
+                if name == 'Заказ' or name == 'Блюдо':
+                    user[event.object.user_id] = {'reviews':'Заказ'} 
+                    vk.messages.edit(
+                        peer_id=event.obj.peer_id,
+                        message= "Введите номер заказа",
+                        conversation_message_id=event.obj.conversation_message_id)
+                   
+                    
                                              
 if __name__ == '__main__':
     print()
