@@ -711,13 +711,13 @@ def start(message):
                 text = order_info(user_id, case="current order")
                 finished_order = True
 
-        elif dict_users[user_id]["Оформление"]["Способ Доставки"] == "Самовывоз":
+        if dict_users[user_id]["Оформление"]["Способ Доставки"] == "Самовывоз":
             dict_users[user_id]["Оформление"].update({"Телефон": message.text})
             order_to_base(user_id)
             text = order_info(user_id, case="current order")
             finished_order = True
 
-        elif dict_users[user_id]["Оформление"]["Способ Доставки"] == "В заведении":
+        if dict_users[user_id]["Оформление"]["Способ Доставки"] == "В заведении":
             if "Номер стола" not in dict_users[user_id]["Оформление"].keys():
                 dict_users[user_id]["Оформление"].update({"Номер стола": message.text})
                 with con:
@@ -730,17 +730,17 @@ def start(message):
                         finished_order = True
                     else:
                         text = "Укажите номер телефона"
-            elif "Телефон" not in dict_users[user_id]["Оформление"].keys() and not finished_order:
+            if "Телефон" not in dict_users[user_id]["Оформление"].keys() and not finished_order:
                 dict_users[user_id]["Оформление"].update({"Телефон": message.text})
                 order_to_base(user_id)
                 text = order_info(user_id, case="current order")
                 finished_order = True
 
-        if text != "":
-            bot.send_message(chat_id=user_id, text=text, reply_markup=hide_keyboard)
-            print("сработало отправка пользователю")
-            bot.send_message(chat_id=-4022782368, text=text)
-            print("Сработало отправка в группу")
+        # if text != "":
+        bot.send_message(chat_id=user_id, text=text, reply_markup=hide_keyboard)
+        print("сработало отправка пользователю")
+        bot.send_message(chat_id=-4022782368, text=text)
+        print("Сработало отправка в группу")
         if finished_order:
             del dict_users[user_id]["Оформление"], dict_users[user_id]["Корзина"]
 
@@ -1357,6 +1357,7 @@ def query_handler(call):
 
             bot.edit_message_text(chat_id=id, message_id=call.message.message_id,
                                   text=text, reply_markup=keyboard)
+            bot.send_message(chat_id=-4022782368, text=text)
         elif operation == "Geo":
             bot.delete_message(chat_id=id, message_id=call.message.message_id)
             bot.send_message(chat_id=id, text="Отправьте Геолокацию",
