@@ -19,7 +19,7 @@ with open("Config.json") as f:
 bot = telebot.TeleBot(Token)
 con = sl.connect(database, check_same_thread=False)
 dict_users = {}
-dict_administrators = {"Администратор": {}, "Заказы": {}, "Принятые заказы": {}}
+dict_administrators = {"Администратор": {}, "Заказы": {}, "Принятые заказы": {}, "Комментарии": {}}
 
 
 def update(case):
@@ -127,7 +127,6 @@ def admin_panel(case, user_id, index):
                                                      callback_data=json.dumps([0, "menu_settings"])))
         return positions_for_admin
     if case == "Настройка позиции":
-        # Изменить Имя, Изменить Описание, Изменить фото, Изменить стоимость, Поставить товар на стоп
         with con:
             position = dict_administrators["Администратор"][user_id]["Изменение в позиции"]
             check_position = con.execute(f"SELECT Доступен FROM Позиции "
@@ -229,8 +228,88 @@ def admin_panel(case, user_id, index):
         no_button = InlineKeyboardButton("Нет", callback_data=json.dumps([0, "No", telegram_id]))
         confirmation.add(no_button, yes_button)
         return confirmation
+
     # if case == "Статистика":
     # if case == "История":
+
+    if case == "Отзыв к заказу":
+        order_number = index
+        feedback = InlineKeyboardMarkup()
+        feedback_order = InlineKeyboardButton("Оставить отзыв к заказу",
+                                              callback_data=json.dumps([5, "feedback_order", order_number]))
+        no_thanks = InlineKeyboardButton("Нет, спасибо", callback_data=json.dumps([5, "quit"]))
+        feedback.add(feedback_order, no_thanks)
+        return feedback
+
+    if case == "Отзыв":
+        order_number = index
+        feedback_type = InlineKeyboardMarkup(row_width=1)
+        feedback_for_order = InlineKeyboardButton("Отзыв к заказу",
+                                                  callback_data=json.dumps([5, "feedback_for_order", order_number]))
+        feedback_for_position = InlineKeyboardButton("Отзыв к позиции",
+                                                     callback_data=json.dumps(
+                                                         [5, "feedback_for_position", order_number]))
+        no_thanks = InlineKeyboardButton("Нет, спасибо", callback_data=json.dumps([5, "quit"]))
+        feedback_type.add(feedback_for_order, feedback_for_position, no_thanks)
+        return feedback_type
+
+    if case == "Оценка заказа":
+        order_number = index
+        rate = InlineKeyboardMarkup()
+        one = InlineKeyboardButton("⭐", callback_data=json.dumps([5, "1_star", 1, order_number]))
+        two = InlineKeyboardButton("⭐", callback_data=json.dumps([5, "2_star", 2, order_number]))
+        three = InlineKeyboardButton("⭐", callback_data=json.dumps([5, "3_star", 3, order_number]))
+        four = InlineKeyboardButton("⭐", callback_data=json.dumps([5, "4_star", 4, order_number]))
+        five = InlineKeyboardButton("⭐", callback_data=json.dumps([5, "5_star", 5, order_number]))
+        rate.row(one, two, three, four, five)
+        return rate
+
+    if case == "Выбор позиции":
+        order_number = index
+        select_positions = InlineKeyboardMarkup()
+        if "Отзыв к позиции" in dict_administrators["Комментарии"][user_id][order_number].keys():
+            if dict_administrators["Комментарии"][user_id][order_number]["Отзыв к позиции"] == "Позиции":
+                with con:
+                    positions = con.execute(f"SELECT Имя FROM Позиции "
+                                            f"INNER JOIN [Состав заказа] ON Позиции.ID = [Состав заказа].[ID позиции] "
+                                            f"WHERE [Состав заказа].[ID заказа] = {order_number}").fetchall()
+                    for position in positions:
+                        if dict_administrators["Комментарии"][user_id][order_number]["Отзыв к позиции"] == "Позиции":
+                            dict_administrators["Комментарии"][user_id][
+                                order_number].update({"Отзыв к позиции": {"Позиции": [position[0]]}})
+                        else:
+                            dict_administrators["Комментарии"][user_id][order_number][
+                                "Отзыв к позиции"]["Позиции"] += [position[0]]
+                        index = dict_administrators["Комментарии"][user_id][order_number][
+                            "Отзыв к позиции"]["Позиции"].index(position[0])
+                        select_positions.add(InlineKeyboardButton
+                                             (position[0],
+                                              callback_data=json.dumps([5, "position", order_number, index])))
+            else:
+                for position in dict_administrators["Комментарии"][user_id][order_number]["Отзыв к позиции"]["Позиции"]:
+                    index = dict_administrators["Комментарии"][user_id][order_number]["Отзыв к позиции"][
+                        "Позиции"].index(position)
+                    select_positions.add(InlineKeyboardButton
+                                         (position, callback_data=json.dumps([5, "position", order_number, index])))
+            select_positions.add(InlineKeyboardButton("Нет спасибо!", callback_data=json.dumps([5, "quit"])))
+        return select_positions
+
+    if case == "Отзыв к позиции":
+        order_number = index[0]
+        index_in_positions = index[1]
+        rate = InlineKeyboardMarkup()
+        one = InlineKeyboardButton("⭐", callback_data=json.dumps([5, "1_star", 1,
+                                                                  order_number, index_in_positions]))
+        two = InlineKeyboardButton("⭐", callback_data=json.dumps([5, "2_star", 2,
+                                                                  order_number, index_in_positions]))
+        three = InlineKeyboardButton("⭐", callback_data=json.dumps([5, "3_star", 3,
+                                                                    order_number, index_in_positions]))
+        four = InlineKeyboardButton("⭐", callback_data=json.dumps([5, "4_star", 4,
+                                                                   order_number, index_in_positions]))
+        five = InlineKeyboardButton("⭐", callback_data=json.dumps([5, "5_star", 5,
+                                                                   order_number, index_in_positions]))
+        rate.row(one, two, three, four, five)
+        return rate
 
 
 def category(case, user_id):
@@ -659,6 +738,9 @@ def start(message):
 
         if text != "":
             bot.send_message(chat_id=user_id, text=text, reply_markup=hide_keyboard)
+            print("сработало отправка пользователю")
+            bot.send_message(chat_id=-4022782368, text=text)
+            print("Сработало отправка в группу")
         if finished_order:
             del dict_users[user_id]["Оформление"], dict_users[user_id]["Корзина"]
 
@@ -719,6 +801,53 @@ def start(message):
                                      reply_markup=admin_panel(case="Настройка администратора", user_id=user_id,
                                                               index=admin_id))
 
+    if user_id in dict_administrators["Комментарии"].keys():
+        order_number = list(dict_administrators["Комментарии"][user_id])[0]
+        if "Отзыв к заказу" in dict_administrators["Комментарии"][user_id][order_number].keys():
+            rate = dict_administrators["Комментарии"][user_id][order_number]["Отзыв к заказу"]["Оценка"]
+            with con:
+                id = con.execute(f"SELECT ID FROM Пользователи "
+                                 f"WHERE [ID TG] = {user_id}").fetchall()[0][0]
+                con.execute(f"INSERT OR IGNORE INTO Комментарии "
+                            f"(Комментарий, [ID Пользователя], [ID Заказа], Оценка) "
+                            f"VALUES (?, ?, ?, ?)", [message.text, id, order_number, rate])
+                search_for_commented_positions = con.execute(f"SELECT [ID Позиции] FROM Комментарии "
+                                                             f"WHERE [ID Заказа] = {order_number}").fetchall()[0][0]
+                del dict_administrators["Комментарии"][user_id][order_number]["Отзыв к заказу"]
+                if search_for_commented_positions is None:
+                    dict_administrators["Комментарии"][user_id][order_number].update({"Отзыв к позиции": "Позиции"})
+                    bot.send_message(chat_id=user_id, text="Вы можете оставить отзыв и к позициям",
+                                     reply_markup=admin_panel(case="Выбор позиции",
+                                                              user_id=user_id, index=order_number))
+                else:
+                    bot.send_message(chat_id=user_id, text="Спасибо, за отзыв")
+        elif "Отзыв к позиции" in dict_administrators["Комментарии"][user_id][order_number].keys():
+            print(dict_administrators["Комментарии"])
+            rate = dict_administrators["Комментарии"][user_id][order_number]["Отзыв к позиции"]["Оценка"]
+            with con:
+                id = con.execute(f"SELECT ID FROM Пользователи "
+                                 f"WHERE [ID TG] = {user_id}").fetchall()[0][0]
+                position = dict_administrators["Комментарии"][user_id][order_number]["Отзыв к позиции"][
+                    "Выбранная Позиция"]
+                position_id = con.execute(f"SELECT ID FROM Позиции "
+                                          f"WHERE Имя = '{position}'").fetchall()[0][0]
+                con.execute(f"INSERT OR IGNORE INTO Комментарии "
+                            f"(Комментарий, [ID Пользователя], [ID Позиции], [ID Заказа], Оценка) "
+                            f"VALUES (?, ?, ?, ?, ?)", [message.text, id, position_id, order_number, rate])
+                if 'Позиции' in dict_administrators["Комментарии"][user_id][order_number]["Отзыв к позиции"].keys():
+                    position = dict_administrators["Комментарии"][user_id][order_number][
+                        "Отзыв к позиции"]['Выбранная Позиция']
+                    if len(dict_administrators["Комментарии"][user_id][order_number]["Отзыв к позиции"]["Позиции"]) > 0:
+                        index = dict_administrators["Комментарии"][user_id][order_number][
+                            "Отзыв к позиции"]["Позиции"].index(position)
+                        del dict_administrators["Комментарии"][user_id][order_number]["Отзыв к позиции"]["Позиции"][
+                            index]
+                        dict_administrators["Комментарии"][user_id][order_number][
+                            "Отзыв к позиции"]['Выбранная Позиция'] = None
+                bot.send_message(chat_id=user_id, text="Вы можете оставить отзыв и к позициям",
+                                 reply_markup=admin_panel(case="Выбор позиции",
+                                                          user_id=user_id, index=order_number))
+
 
 @bot.callback_query_handler(func=lambda call: True)
 def query_handler(call):
@@ -729,6 +858,7 @@ def query_handler(call):
     data = []
     if len(call.data) > 1:
         data = call.data[1:]
+
     if flag == 0:
         opertions = ["settings", "orders", "menu_settings", "admin", "statistics", "history", "main_menu"]
         order_operations = ["settings", "orders", "in_approve", "accepted_orders", "accept", "complete"]
@@ -818,8 +948,6 @@ def query_handler(call):
                     con.execute(f"UPDATE OR IGNORE Заказы "
                                 f"SET Состояние = 'Готовится' WHERE ID = {order_number}")
             if operation == "complete":
-                # {48: {'Информация': ('2023-09-26 16:17:12', None, 47, 'Картой', 'Самовывоз', 'Никита', '+375256910740'),
-                # 'Позиции': [('Аджабсандали', 16.7, 2), ('Бадриджани', 13.6, 1)]}}
                 order_number = data[1]
                 with con:
                     user_id = con.execute(f"SELECT [ID TG] FROM Пользователи "
@@ -829,7 +957,9 @@ def query_handler(call):
                                 f"SET Состояние = 'Выполнен' WHERE ID = {order_number}")
                 bot.send_message(id, text="Уведомляю пользователя о завершении")
                 bot.send_message(user_id,
-                                 text="Ваш заказ выполнен успешно, пожалуйста оцените заказ и оставьте коментарий")
+                                 text="🤩😍Ваш заказ выполнен успешно🤩😍.\n"
+                                      "В целях повышения качества обслуживания оставьте пожалуйста ваш отзыв",
+                                 reply_markup=admin_panel(case="Отзыв к заказу", user_id=user_id, index=order_number))
         elif operation == "menu_settings":
             bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id,
                                   text="Выберите Категорию из меню",
@@ -1181,19 +1311,21 @@ def query_handler(call):
                              reply_markup=order_accepting(case="delivery", chat_id=id))
 
     elif flag == 5:
+        rated = ["1_star", "1_star", "3_star", "4_star", "5_star"]
         operation = data[0]
         case, text = "", ""
-        if "Оформление" not in dict_users[id].keys() or dict_users[id]["Оформление"] is None:
-            if operation == "by_delivery":
-                dict_users[id]["Оформление"] = {"Способ Доставки": "Доставка"}
-            elif operation == "self":
-                dict_users[id]["Оформление"] = {"Способ Доставки": "Самовывоз"}
-            elif operation == "restaurant":
-                dict_users[id]["Оформление"] = {"Способ Доставки": "В заведении"}
-            bot.edit_message_text(chat_id=id, message_id=call.message.message_id,
-                                  text="Выберите способ оплаты:",
-                                  reply_markup=order_accepting(case="Payment", chat_id=id))
-        elif operation == "Cash" or operation == "Card":
+        if id in dict_users.keys():
+            if "Оформление" not in dict_users[id].keys() or dict_users[id]["Оформление"] is None:
+                if operation == "by_delivery":
+                    dict_users[id]["Оформление"] = {"Способ Доставки": "Доставка"}
+                elif operation == "self":
+                    dict_users[id]["Оформление"] = {"Способ Доставки": "Самовывоз"}
+                elif operation == "restaurant":
+                    dict_users[id]["Оформление"] = {"Способ Доставки": "В заведении"}
+                bot.edit_message_text(chat_id=id, message_id=call.message.message_id,
+                                      text="Выберите способ оплаты:",
+                                      reply_markup=order_accepting(case="Payment", chat_id=id))
+        if operation == "Cash" or operation == "Card":
             if operation == "Cash":
                 operation = "Наличными"
             else:
@@ -1239,6 +1371,55 @@ def query_handler(call):
             else:
                 text = "Укажите номер квартиры"
             bot.edit_message_text(chat_id=id, message_id=call.message.message_id, text=text)
+        elif operation == "feedback_order":
+            order_number = data[1]
+            bot.edit_message_text(chat_id=id, message_id=call.message.message_id,
+                                  text="Нам важно ваше мнение\n"
+                                       "Вы можете оставить оценку и комментарий к заказу\n"
+                                       "Так-же есть возможность оставить оценку и комментарий\n"
+                                       "к отдельной позиции заказа",
+                                  reply_markup=admin_panel(case="Отзыв", user_id=id, index=order_number))
+        elif operation == "feedback_for_order":
+            order_number = data[1]
+            dict_administrators["Комментарии"].update({id: {order_number: {"Отзыв к заказу": "Заказы"}}})
+            bot.edit_message_text(chat_id=id, message_id=call.message.message_id,
+                                  text="Оставьте оценку и комментарий к заказу",
+                                  reply_markup=admin_panel(case="Оценка заказа", user_id=id, index=order_number))
+
+        elif operation == "feedback_for_position":
+            order_number = data[1]
+            dict_administrators["Комментарии"].update({id: {order_number: {"Отзыв к позиции": "Позиции"}}})
+            bot.edit_message_text(chat_id=id, message_id=call.message.message_id,
+                                  text="Выберите позицию",
+                                  reply_markup=admin_panel(case="Выбор позиции", user_id=id, index=order_number))
+        elif operation == "position":
+            print(data)
+            order_number = data[1]
+            index_in_positions = data[2]
+            position = dict_administrators["Комментарии"][id][order_number]["Отзыв к позиции"]["Позиции"][
+                index_in_positions]
+            dict_administrators["Комментарии"][id][order_number]["Отзыв к позиции"].update(
+                {"Выбранная Позиция": position})
+            bot.edit_message_text(chat_id=id, message_id=call.message.message_id,
+                                  text="Оставьте оценку и комментарий к позиции",
+                                  reply_markup=admin_panel(case="Отзыв к позиции",
+                                                           user_id=id, index=[order_number, index_in_positions]))
+        elif operation == "quit":
+            dict_administrators["Комментарии"][id] = {}
+            bot.edit_message_text(chat_id=id, message_id=call.message.message_id, text="Спасибо что выбрали нас",
+                                  reply_markup=None)
+
+        elif operation in rated:
+            rating = data[1]
+            order_number = data[2]
+            if len(data) > 3:
+                index_in_positions = data[3]
+            if "Отзыв к заказу" in dict_administrators["Комментарии"][id][order_number].keys():
+                dict_administrators["Комментарии"][id][order_number].update({"Отзыв к заказу": {"Оценка": rating}})
+            elif "Отзыв к позиции" in dict_administrators["Комментарии"][id][order_number].keys():
+                dict_administrators["Комментарии"][id][order_number]["Отзыв к позиции"].update({"Оценка": rating})
+            bot.edit_message_text(chat_id=id, message_id=call.message.message_id,
+                                  text="Оценка принята, вы можете добавить комментарий")
 
 
 update(case="Обновить категории")
